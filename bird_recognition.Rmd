@@ -1,0 +1,20 @@
+---
+title: "Bird Recognition"
+output: html_notebook
+---
+
+## Load the necessary packages
+
+```{r}
+library(bioacoustics)
+library(seewave)
+```
+
+```{r}
+files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
+head(files)
+sample = read_audio(files[1])
+sample
+oscillo(sample)
+spectro(sample, flim=c(0,6.5))
+```
