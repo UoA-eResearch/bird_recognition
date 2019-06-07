@@ -8,13 +8,26 @@ output: html_notebook
 ```{r}
 library(bioacoustics)
 library(seewave)
+library(dplyr)
 ```
 
 ```{r}
 files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
-head(files)
-sample = read_audio(files[1])
-sample
-oscillo(sample)
-spectro(sample, flim=c(0,6.5))
+n = length(files)
+data = data.frame(filename = character(n), birdid = character(n), calltype = character(n), idnumber = character(n), audio = character(n), stringsAsFactors = FALSE)
+for (i in 1:n) {
+  f = files[i]
+  filename = tools::file_path_sans_ext(basename(f))
+  parts = unlist(strsplit(filename, "_"))
+  row = list(filename = filename, birdid = parts[1], calltype = parts[2], idnumber = parts[3], audio = list(read_audio(f)))
+  data[i,] = row
+}
+head(data)
+oscillo(data$audio[[1]])
+birds = unique(data$birdid)
+filtered = filter(data, birdid == birds[1])
+for (i in 1:nrow(filtered)) {
+  audio = filtered$audio[[i]]
+  spectro(audio, main=filtered$filename[i])
+}
 ```
