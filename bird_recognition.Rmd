@@ -9,25 +9,78 @@ output: html_notebook
 library(bioacoustics)
 library(seewave)
 library(dplyr)
+library(tools)
+library(randomForest)
+library(stringr)
 ```
+
+## Load the files into a data frame. Separate out the metadata from the filename into columns. Render some spectrograms
 
 ```{r}
 files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
-n = length(files)
-data = data.frame(filename = character(n), birdid = character(n), calltype = character(n), idnumber = character(n), audio = character(n), stringsAsFactors = FALSE)
-for (i in 1:n) {
-  f = files[i]
-  filename = tools::file_path_sans_ext(basename(f))
-  parts = unlist(strsplit(filename, "_"))
-  row = list(filename = filename, birdid = parts[1], calltype = parts[2], idnumber = parts[3], audio = list(read_audio(f)))
-  data[i,] = row
-}
-head(data)
-oscillo(data$audio[[1]])
-birds = unique(data$birdid)
-filtered = filter(data, birdid == birds[1])
+files_without_extension = basename(file_path_sans_ext(files))
+wavs = setNames(
+  lapply(
+    files,
+    read_audio
+  ),
+  files_without_extension
+)
+metadata = data.frame(str_split_fixed(files_without_extension, "_", 3))
+metadata = cbind(metadata, files_without_extension)
+colnames(metadata) = c("birdid", "calltype", "idnumber", "filename")
+head(metadata)
+oscillo(wavs[[1]])
+birds = unique(metadata$birdid)
+filtered = filter(metadata, birdid == birds[1])
 for (i in 1:nrow(filtered)) {
-  audio = filtered$audio[[i]]
+  audio = wavs[[filtered$filename[i]]]
   spectro(audio, main=filtered$filename[i])
 }
+```
+
+## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
+
+```{r}
+test = metadata %>% 
+          group_by(birdid, calltype) %>% 
+          filter(row_number()==1)
+test
+train = metadata %>% 
+          group_by(birdid, calltype) %>% 
+          filter(row_number()!=1)
+train
+```
+
+## Train a random forest classifier based on raw frequencies
+
+```{r}
+trainM = matrix(0, nrow = nrow(train), ncol = 1000)
+for (i in 1:nrow(train)) {
+  data = wavs[[train$filename[i]]]@left
+  #data = fft(data)
+  trainM[i,] = data[1:1000]
+}
+rownames(trainM) = train$birdid
+set.seed(0)
+rf <- randomForest(x = trainM, y = train$birdid, data=train, importance = FALSE, proximity = FALSE,
+                   replace = TRUE, ntree = 4000, mtry = 4)
+
+rf
+# Look at the confusion matrix of the training set
+rf$confusion
+
+testM = matrix(0, nrow = nrow(test), ncol = 1000)
+for (i in 1:nrow(test)) {
+  data = wavs[[test$filename[i]]]@left
+  #data = fft(data)
+  testM[i,] = data[1:1000]
+}
+rownames(testM) = test$birdid
+
+# Let's make predictions with our classifier on a test set
+predict(rf, testM, type = "response")
+
+# To look at the predictions 
+predict(rf, testM, type = "prob")
 ```
