@@ -80,7 +80,7 @@ for (i in 1:nrow(test)) {
 rownames(testM) = test$birdid
 
 # Let's make predictions with our classifier on a test set
-predict(rf, testM, type = "response")
+table(test$birdid, predict(rf, testM, type = "response"))
 
 # To look at the predictions 
 predict(rf, testM, type = "prob")
