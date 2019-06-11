@@ -98,6 +98,7 @@ y = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1]))
 rownames(trainM) = y
 head(trainM)
 
+set.seed(0)
 rf = randomForest(trainM, y, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
 rf
 # Look at the confusion matrix of the training set
