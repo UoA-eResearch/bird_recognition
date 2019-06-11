@@ -13,6 +13,7 @@ library(dplyr)
 library(tools)
 library(randomForest)
 library(stringr)
+library(keras)
 ```
 
 ## Load the files into a data frame. Separate out the metadata from the filename into columns. Render some spectrograms
@@ -40,6 +41,8 @@ for (i in 1:nrow(filtered)) {
 }
 ```
 
+Each calltype seems to have a unique spectrogram.
+
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r}
@@ -53,63 +56,28 @@ train = metadata %>%
 train
 ```
 
-## Train a random forest classifier based on raw frequencies
+## Train a random forest classifier based on Mel-frequency Cepstral Coefficients (MFCC)
 
 ```{r}
-trainM = matrix(0, nrow = nrow(train), ncol = 1000)
-for (i in 1:nrow(train)) {
-  data = wavs[[train$filename[i]]]@left
-  #data = fft(data)
-  trainM[i,] = data[1:1000]
-}
-rownames(trainM) = train$birdid
-set.seed(0)
-rf <- randomForest(x = trainM, y = train$birdid, data=train, importance = FALSE, proximity = FALSE,
-                   replace = TRUE, ntree = 4000, mtry = 4)
+mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
+head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
+image(mels[[1]])
 
-rf
-# Look at the confusion matrix of the training set
-rf$confusion
-
-testM = matrix(0, nrow = nrow(test), ncol = 1000)
-for (i in 1:nrow(test)) {
-  data = wavs[[test$filename[i]]]@left
-  #data = fft(data)
-  testM[i,] = data[1:1000]
-}
-rownames(testM) = test$birdid
-
-# Let's make predictions with our classifier on a test set
-table(test$birdid, predict(rf, testM, type = "response"))
-
-# To look at the predictions 
-predict(rf, testM, type = "prob")
-```
-
-Results aren't great with this method. The frequencies are too similar to distinguish. Let's try with Mel-frequency Cepstral Coefficients (MFCC)
-
-```{r}
-mels = sapply(wavs, melfcc)
-mels[[1]]
-
-trainMels = mels[train$filename]
+trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
 trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-y = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1]))
+y = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
 rownames(trainM) = y
 head(trainM)
 
-set.seed(0)
+set.seed(42)
 rf = randomForest(trainM, y, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
 rf
-# Look at the confusion matrix of the training set
-rf$confusion # Better!
 
 testMels = mels[test$filename]
 testM = do.call(rbind, testMels)
 y = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
 rownames(testM) = y
 head(testM)
-
 
 # Let's make predictions with our classifier on a test set
 table(y, predict(rf, testM, type = "response"))
@@ -126,6 +94,13 @@ for (i in 1:nrow(test)) {
 testWithPredictions = data.frame(test, predictions)
 testWithPredictions
 correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
-print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", (correct_predictions / nrow(test) * 100), "%"))
+accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
+print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
+```
+
+## Deep learning classification with the R interface to Keras based on MFCC
+
+```{r}
+
 ```
 
