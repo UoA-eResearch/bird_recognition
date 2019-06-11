@@ -115,5 +115,16 @@ table(y, predict(rf, testM, type = "response"))
 
 # To look at the predictions 
 predict(rf, testM, type = "prob")
+
+predictions = character(nrow(test))
+for (i in 1:nrow(test)) {
+  mel = testMels[[i]]
+  prediction = names(head(sort(colMeans(predict(rf, mel, type="prob")), decreasing = TRUE)))[1]
+  predictions[i] = prediction
+}
+testWithPredictions = data.frame(test, predictions)
+testWithPredictions
+correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
+print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", (correct_predictions / nrow(test) * 100), "%"))
 ```
 
