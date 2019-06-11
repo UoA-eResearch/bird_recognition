@@ -7,6 +7,7 @@ output: html_notebook
 
 ```{r}
 library(bioacoustics)
+library(tuneR)
 library(seewave)
 library(dplyr)
 library(tools)
@@ -84,3 +85,35 @@ predict(rf, testM, type = "response")
 # To look at the predictions 
 predict(rf, testM, type = "prob")
 ```
+
+Results aren't great with this method. The frequencies are too similar to distinguish. Let's try with Mel-frequency Cepstral Coefficients (MFCC)
+
+```{r}
+mels = sapply(wavs, melfcc)
+mels[[1]]
+
+trainMels = mels[train$filename]
+trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
+y = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1]))
+rownames(trainM) = y
+head(trainM)
+
+rf = randomForest(trainM, y, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
+rf
+# Look at the confusion matrix of the training set
+rf$confusion # Better!
+
+testMels = mels[test$filename]
+testM = do.call(rbind, testMels)
+y = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
+rownames(testM) = y
+head(testM)
+
+
+# Let's make predictions with our classifier on a test set
+table(y, predict(rf, testM, type = "response"))
+
+# To look at the predictions 
+predict(rf, testM, type = "prob")
+```
+
