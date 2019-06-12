@@ -72,7 +72,10 @@ head(trainM)
 set.seed(42)
 rf = randomForest(trainM, trainM.labels, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
 rf
+```
+### Check accuracy of randomForest model
 
+```{r}
 testMels = mels[test$filename]
 testM = do.call(rbind, testMels)
 testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
@@ -80,7 +83,11 @@ rownames(testM) = testM.labels
 head(testM)
 
 # Let's make predictions with our classifier on a test set
-table(testM.labels, predict(rf, testM, type = "response"))
+table = table(testM.labels, predict(rf, testM, type = "response"))
+table
+
+accuracy_pct = round(sum(diag(table)) / sum(table) * 100, 2)
+print(paste("accuracy across whole dataset", accuracy_pct, "%"))
 
 # To look at the predictions 
 predict(rf, testM, type = "prob")
@@ -88,7 +95,7 @@ predict(rf, testM, type = "prob")
 predictions = character(nrow(test))
 for (i in 1:nrow(test)) {
   mel = testMels[[i]]
-  prediction = names(head(sort(colMeans(predict(rf, mel, type="prob")), decreasing = TRUE)))[1]
+  prediction = names(which.max(colMeans(predict(rf, mel, type="prob"))))
   predictions[i] = prediction
 }
 testWithPredictions = data.frame(test, predictions)
@@ -97,6 +104,7 @@ correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
 accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
 print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
+
 
 ## Deep learning classification with the R interface to Keras based on MFCC
 
@@ -152,7 +160,20 @@ plot(history)
 
 ```{r}
 # Score on the test set
-mod0 %>% evaluate(X_test, Y_test, batch_size = 32)
+model %>% evaluate(X_test, Y_test, batch_size = 32)
+
+predictions = character(nrow(test))
+for (i in 1:nrow(test)) {
+  mel = testMels[[i]]
+  prediction = which.max(colMeans(predict_proba(model, mel)))
+  prediction = levels(testM.labels)[prediction]
+  predictions[i] = prediction
+}
+testWithPredictions = data.frame(test, predictions)
+testWithPredictions
+correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
+accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
+print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
 
 randomForest did better.
