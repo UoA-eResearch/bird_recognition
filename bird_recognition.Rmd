@@ -23,7 +23,7 @@ library(keras)
 
 ## Load the wave files. Separate out the metadata from the filename into columns. Render some spectrograms
 
-```{r}
+```{r load}
 files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
 files_without_extension = basename(file_path_sans_ext(files))
 wavs = setNames(
@@ -50,7 +50,7 @@ Each calltype seems to have a unique spectrogram.
 
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
-```{r}
+```{r split}
 test = metadata %>% 
           group_by(birdid, calltype) %>% 
           filter(row_number()==1)
@@ -63,7 +63,7 @@ train
 
 ## Train a random forest classifier based on Mel-frequency Cepstral Coefficients (MFCC)
 
-```{r}
+```{r rf}
 mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
 head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
 image(mels[[1]])
@@ -74,13 +74,13 @@ trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Cr
 rownames(trainM) = trainM.labels
 head(trainM)
 
-set.seed(42)
+set.seed(1337)
 rf = randomForest(trainM, trainM.labels, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
 rf
 ```
 ### Check accuracy of randomForest model
 
-```{r}
+```{r rf-acc}
 testMels = mels[test$filename]
 testM = do.call(rbind, testMels)
 testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
@@ -113,7 +113,7 @@ print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset corr
 
 ## Deep learning classification with the R interface to Keras based on MFCC
 
-```{r}
+```{r keras, warning=FALSE}
 X_train = trainM
 Y_train = to_categorical(as.integer(trainM.labels) - 1)
 X_test = testM
@@ -157,13 +157,15 @@ reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
 history = model %>% fit(X_train, Y_train, batch_size = 32, epochs = 50,
              validation_data = list(X_test, Y_test),
              verbose = 0, callbacks = reduce_lr)
-plot(history)
+```
 
+```{r keras-plot}
+plot(history)
 ```
 
 ### Check accuracy of keras model
 
-```{r}
+```{r keras-acc}
 # Score on the test set
 model %>% evaluate(X_test, Y_test, batch_size = 32)
 
