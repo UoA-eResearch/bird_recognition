@@ -1,11 +1,16 @@
 ---
 title: "Bird Recognition"
-output: html_notebook
+output:
+  html_notebook:
+    toc: TRUE
+    toc_float: TRUE
 ---
+
+GitHub repo: https://github.com/UoA-eResearch/bird_recognition
 
 ## Load the necessary packages
 
-```{r warnings=FALSE}
+```{r setup, warning=FALSE}
 library(bioacoustics)
 library(tuneR)
 library(seewave)
