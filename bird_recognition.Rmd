@@ -5,7 +5,7 @@ output: html_notebook
 
 ## Load the necessary packages
 
-```{r}
+```{r warnings=FALSE}
 library(bioacoustics)
 library(tuneR)
 library(seewave)
@@ -65,22 +65,22 @@ image(mels[[1]])
 
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
 trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-y = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
-rownames(trainM) = y
+trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
+rownames(trainM) = trainM.labels
 head(trainM)
 
 set.seed(42)
-rf = randomForest(trainM, y, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
+rf = randomForest(trainM, trainM.labels, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
 rf
 
 testMels = mels[test$filename]
 testM = do.call(rbind, testMels)
-y = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
-rownames(testM) = y
+testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
+rownames(testM) = testM.labels
 head(testM)
 
 # Let's make predictions with our classifier on a test set
-table(y, predict(rf, testM, type = "response"))
+table(testM.labels, predict(rf, testM, type = "response"))
 
 # To look at the predictions 
 predict(rf, testM, type = "prob")
@@ -101,6 +101,58 @@ print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset corr
 ## Deep learning classification with the R interface to Keras based on MFCC
 
 ```{r}
+X_train = trainM
+Y_train = to_categorical(as.integer(trainM.labels) - 1)
+X_test = testM
+Y_test = to_categorical(as.integer(testM.labels) - 1)
+
+# Build the sequential model
+model = keras_model_sequential()
+model %>%
+  # Input shape layer = c(samples, rows, cols, channels)
+  layer_reshape(input_shape=ncol(X_train),target_shape=c(1,1,ncol(X_train))) %>% 
+  # First conv 2d layer with 128 neurons, kernel size of 8 x 8 and stride of 1 x 1
+  layer_conv_2d(128, c(8,8), c(1,1), padding='same') %>%
+  layer_batch_normalization() %>%
+  layer_activation("relu") %>%
+  layer_dropout(0.2) %>%
+  # Second conv 2d layer with 256 neurons, kernel size of 5 x 5 and stride of 1 x 1
+  layer_conv_2d(256, c(5,5), c(1,1), padding='same') %>%
+  layer_batch_normalization() %>%
+  layer_activation("relu") %>%
+  layer_dropout(0.2) %>%
+  # Third conv 2d layer with 128 neurons, kernel size of 3 x 3 and stride of 1 x 1
+  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
+  layer_batch_normalization() %>%
+  layer_activation("relu") %>%
+  layer_dropout(0.2) %>%
+  # Average pooling layer
+  layer_global_average_pooling_2d() %>%
+  # Activation output layer with 2 classes
+  layer_dense(units = ncol(Y_train),  activation='softmax')
+
+# Model compile
+model %>% compile(loss = 'categorical_crossentropy',
+                 optimizer = "adam",
+                 metrics = "categorical_accuracy")
+
+
+# Add a callback to reduce the learning rate when reaching the plateau
+reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
+                                           patience = 50, min_lr = 0.0001)
+# Start learning
+history = model %>% fit(X_train, Y_train, batch_size = 32, epochs = 50,
+             validation_data = list(X_test, Y_test),
+             verbose = 0, callbacks = reduce_lr)
+plot(history)
 
 ```
 
+### Check accuracy of keras model
+
+```{r}
+# Score on the test set
+mod0 %>% evaluate(X_test, Y_test, batch_size = 32)
+```
+
+randomForest did better.
