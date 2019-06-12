@@ -16,7 +16,7 @@ library(stringr)
 library(keras)
 ```
 
-## Load the files into a data frame. Separate out the metadata from the filename into columns. Render some spectrograms
+## Load the wave files. Separate out the metadata from the filename into columns. Render some spectrograms
 
 ```{r}
 files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
