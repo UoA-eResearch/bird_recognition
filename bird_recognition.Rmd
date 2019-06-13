@@ -19,6 +19,7 @@ library(tools)
 library(randomForest)
 library(stringr)
 library(keras)
+library(doParallel)
 ```
 
 ## Load the wave files. Separate out the metadata from the filename into columns. Render some spectrograms
@@ -48,66 +49,32 @@ for (i in 1:nrow(filtered)) {
 
 Each calltype seems to have a unique spectrogram.
 
-## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
-
-```{r split}
-test = metadata %>% 
-          group_by(birdid, calltype) %>% 
-          filter(row_number()==1)
-test
-train = metadata %>% 
-          group_by(birdid, calltype) %>% 
-          filter(row_number()!=1)
-train
-```
-
-## Train a random forest classifier based on Mel-frequency Cepstral Coefficients (MFCC)
+## Train random forest classifiers based on Mel-frequency Cepstral Coefficients (MFCC)
 
 ```{r rf}
 mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
 head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
 image(mels[[1]])
 
-trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
-trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
-rownames(trainM) = trainM.labels
-head(trainM)
+registerDoParallel() #establish clusters for multithreaded computing
+predictions = character(nrow(metadata))
 
-set.seed(1337)
-rf = randomForest(trainM, trainM.labels, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
-rf
-```
-### Check accuracy of randomForest model
-
-```{r rf-acc}
-testMels = mels[test$filename]
-testM = do.call(rbind, testMels)
-testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
-rownames(testM) = testM.labels
-head(testM)
-
-# Let's make predictions with our classifier on a test set
-table = table(testM.labels, predict(rf, testM, type = "response"))
-table
-
-accuracy_pct = round(sum(diag(table)) / sum(table) * 100, 2)
-print(paste("accuracy across whole dataset", accuracy_pct, "%"))
-
-# To look at the predictions 
-predict(rf, testM, type = "prob")
-
-predictions = character(nrow(test))
-for (i in 1:nrow(test)) {
-  mel = testMels[[i]]
-  prediction = names(which.max(colMeans(predict(rf, mel, type="prob"))))
-  predictions[i] = prediction
+foreach (i = 1:length(mels)) %dopar% {
+  test = mels[[i]]
+  print(metadata$filename[i])
+  trainMels = mels[-i]
+  trainM = do.call(rbind, trainMels)
+  labels = rep(metadata$birdid[-i], lapply(trainMels, nrow))
+  set.seed(1337)
+  rf = randomForest(trainM, labels)
+  predictions[i] = names(which.max(colMeans(predict(rf, test, type="prob"))))
 }
-testWithPredictions = data.frame(test, predictions)
-testWithPredictions
-correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
-accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
-print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
+
+metadataWithPredictions = data.frame(metadata, predictions)
+metadataWithPredictions
+correct_predictions = nrow(filter(metadataWithPredictions, birdid == predictions))
+accuracy_pct = round(correct_predictions / nrow(metadata) * 100, 2)
+print(paste(correct_predictions, "/", nrow(metadata), "wavs correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
 
 
