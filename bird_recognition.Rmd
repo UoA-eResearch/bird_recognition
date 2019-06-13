@@ -51,13 +51,10 @@ Each calltype seems to have a unique spectrogram.
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r split}
-test = metadata %>% 
-          group_by(birdid, calltype) %>% 
-          filter(row_number()==1)
+test.indices = sample(1:nrow(metadata), 20)
+test = metadata[test.indices,]
 test
-train = metadata %>% 
-          group_by(birdid, calltype) %>% 
-          filter(row_number()!=1)
+train = metadata[-test.indices,]
 train
 ```
 
@@ -103,7 +100,7 @@ for (i in 1:nrow(test)) {
   prediction = names(which.max(colMeans(predict(rf, mel, type="prob"))))
   predictions[i] = prediction
 }
-testWithPredictions = data.frame(test, predictions)
+testWithPredictions = data.frame(test, factor(predictions, levels=levels(test$birdid)))
 testWithPredictions
 correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
 accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
