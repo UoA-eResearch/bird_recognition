@@ -114,34 +114,37 @@ print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset corr
 ## Deep learning classification with the R interface to Keras based on MFCC
 
 ```{r keras, warning=FALSE}
-X_train = trainM
-Y_train = to_categorical(as.integer(trainM.labels) - 1)
-X_test = testM
-Y_test = to_categorical(as.integer(testM.labels) - 1)
+mrows = max(sapply(mels, function(x) { nrow(x) }))
+X_train = array(0, dim=c(length(trainMels), mrows, 20))
+
+for (i in 1:length(trainMels)) {
+  X_train[i,,] = apply(trainMels[[i]], 2, function(x) {approx(x,n=mrows)$y})
+}
+
+Y_train = to_categorical(as.integer(train$birdid) - 1)
+
+X_test = array(0, dim=c(length(testMels), mrows, 20))
+for (i in 1:length(testMels)) {
+  X_test[i,,] = apply(testMels[[i]], 2, function(x) {approx(x,n=mrows)$y})
+}
+
+Y_test = to_categorical(as.integer(test$birdid) - 1)
+
+batch = nrow(X_test)
 
 # Build the sequential model
 model = keras_model_sequential()
 model %>%
-  # Input shape layer = c(samples, rows, cols, channels)
-  layer_reshape(input_shape=ncol(X_train),target_shape=c(1,1,ncol(X_train))) %>% 
-  # First conv 2d layer with 128 neurons, kernel size of 8 x 8 and stride of 1 x 1
-  layer_conv_2d(128, c(8,8), c(1,1), padding='same') %>%
-  layer_batch_normalization() %>%
-  layer_activation("relu") %>%
-  layer_dropout(0.2) %>%
-  # Second conv 2d layer with 256 neurons, kernel size of 5 x 5 and stride of 1 x 1
-  layer_conv_2d(256, c(5,5), c(1,1), padding='same') %>%
-  layer_batch_normalization() %>%
-  layer_activation("relu") %>%
-  layer_dropout(0.2) %>%
-  # Third conv 2d layer with 128 neurons, kernel size of 3 x 3 and stride of 1 x 1
-  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
-  layer_batch_normalization() %>%
-  layer_activation("relu") %>%
-  layer_dropout(0.2) %>%
-  # Average pooling layer
-  layer_global_average_pooling_2d() %>%
-  # Activation output layer with 2 classes
+  layer_lstm(units = 100,
+    input_shape = dim(X_train)[-1],
+    batch_size = batch,
+    return_sequences = TRUE,
+    stateful = TRUE) %>%
+  layer_dropout(rate = 0.9) %>%
+  layer_lstm(units = 50,
+    return_sequences = FALSE,
+    stateful = TRUE) %>%
+  layer_dropout(rate = 0.5) %>%
   layer_dense(units = ncol(Y_train),  activation='softmax')
 
 # Model compile
@@ -149,14 +152,10 @@ model %>% compile(loss = 'categorical_crossentropy',
                  optimizer = "adam",
                  metrics = "categorical_accuracy")
 
-
-# Add a callback to reduce the learning rate when reaching the plateau
-reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
-                                           patience = 50, min_lr = 0.0001)
 # Start learning
-history = model %>% fit(X_train, Y_train, batch_size = 32, epochs = 50,
+history = model %>% fit(X_train, Y_train, batch_size = batch, epochs = 200,
              validation_data = list(X_test, Y_test),
-             verbose = 0, callbacks = reduce_lr)
+             verbose = 1)
 ```
 
 ```{r keras-plot}
@@ -167,7 +166,7 @@ plot(history)
 
 ```{r keras-acc}
 # Score on the test set
-model %>% evaluate(X_test, Y_test, batch_size = 32)
+model %>% evaluate(X_test, Y_test, batch_size = nrow(X_test))
 
 predictions = character(nrow(test))
 for (i in 1:nrow(test)) {
