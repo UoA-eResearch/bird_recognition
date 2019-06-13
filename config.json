@@ -5,7 +5,9 @@
       "tensorShape": [
         2450,
         20
-      ]
+      ],
+	  "tensorPath": "https://raw.githubusercontent.com/UoA-eResearch/bird_recognition/ryan-test/train.tvs",
+      "metadataPath": "https://raw.githubusercontent.com/UoA-eResearch/bird_recognition/ryan-test/metadata.tvs"
     }
   ]
 }
