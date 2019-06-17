@@ -70,7 +70,7 @@ image(mels[[1]])
 
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
 trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
+trainM.labels = rep(train$calltype, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
 rownames(trainM) = trainM.labels
 head(trainM)
 
@@ -83,7 +83,7 @@ rf
 ```{r rf-acc}
 testMels = mels[test$filename]
 testM = do.call(rbind, testMels)
-testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
+testM.labels = rep(test$calltype, lapply(testMels, function(x) dim(x)[1]))
 rownames(testM) = testM.labels
 head(testM)
 
@@ -105,7 +105,7 @@ for (i in 1:nrow(test)) {
 }
 testWithPredictions = data.frame(test, predictions)
 testWithPredictions
-correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
+correct_predictions = nrow(filter(testWithPredictions, calltype == predictions))
 accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
 print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
