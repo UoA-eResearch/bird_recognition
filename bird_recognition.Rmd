@@ -19,6 +19,7 @@ library(tools)
 library(randomForest)
 library(stringr)
 library(keras)
+library(ggplot2)
 ```
 
 ## Load the wave files. Separate out the metadata from the filename into columns. Render some spectrograms
@@ -46,19 +47,40 @@ for (i in 1:nrow(filtered)) {
 }
 ```
 
+
+```{r}
+wavs_tuneR = setNames(
+  lapply(
+    files,
+    read_audio
+  ),
+  files_without_extension
+)
+
+```
+
+```{r}
+metadata %>%
+  mutate(gender=substr(metadata$birdid,1,3)) %>% 
+  ggplot(aes(gender, fill=gender)) +
+  geom_bar() +
+  facet_grid(.~metadata$calltype) 
+```
+
 Each calltype seems to have a unique spectrogram.
 
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r split}
-test = metadata %>% 
+test <- metadata %>% 
           group_by(birdid, calltype) %>% 
-          filter(row_number()==1)
-test
-train = metadata %>% 
+          filter(row_number()==1) %>% 
+          glimpse()
+          
+train <-  metadata %>% 
           group_by(birdid, calltype) %>% 
-          filter(row_number()!=1)
-train
+          filter(row_number()!=1) %>% 
+          glimpse()
 ```
 
 ## Train a random forest classifier based on Mel-frequency Cepstral Coefficients (MFCC)
@@ -68,19 +90,47 @@ mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
 head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
 image(mels[[1]])
 
+# First model
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
 trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
 trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
 rownames(trainM) = trainM.labels
-head(trainM)
 
 set.seed(1337)
-rf = randomForest(trainM, trainM.labels, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
-rf
 ```
+
+```{r}
+audio_len = sapply(trainMels, dim)
+boxplot(audio_len[1,])
+hist(audio_len[1,])
+
+dim(trainMels[[1]])
+dim(trainMels[[3]])
+mean(audio_len[1,])
+```
+
+```{r}
+### Adding more resolution to the spectrogram
+
+# Define the function
+addResolution <- function(matrix) {
+  test <- matrix(0,116,20)
+  dimension <- dim(matrix)
+  test[1:dimension[1], 1:dimension[2]] <- matrix
+  test
+}
+
+
+trainMels_stretched <- lapply(trainMels, addResolution)
+
+dim(trainMels_stretched[[1]])
+image(trainMels_stretched[[1]])
+```
+
 ### Check accuracy of randomForest model
 
 ```{r rf-acc}
+# First model
 testMels = mels[test$filename]
 testM = do.call(rbind, testMels)
 testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
@@ -109,7 +159,6 @@ correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
 accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
 print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
-
 
 ## Deep learning classification with the R interface to Keras based on MFCC
 
