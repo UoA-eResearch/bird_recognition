@@ -11,6 +11,10 @@ GitHub repo: https://github.com/UoA-eResearch/bird_recognition
 ## Load the necessary packages
 
 ```{r setup, warning=FALSE}
+rm(list=ls(all=TRUE))
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE)
+knitr::opts_chunk$set(fig.width = 12, fig.height = 8, fig.align = 'center')
+
 library(bioacoustics)
 library(tuneR)
 library(seewave)
@@ -83,30 +87,36 @@ train <-  metadata %>%
           glimpse()
 ```
 
-## Train a random forest classifier based on Mel-frequency Cepstral Coefficients (MFCC)
-
 ```{r rf}
 mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
 head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
 image(mels[[1]])
-
-# First model
+maxMels <- do.call(max,mels)
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
 trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
 trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
 rownames(trainM) = trainM.labels
 
+testMels = mels[test$filename]
+testM = do.call(rbind, testMels)
+testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
+rownames(testM) = testM.labels
+
 set.seed(1337)
 ```
 
 ```{r}
-audio_len = sapply(trainMels, dim)
-boxplot(audio_len[1,])
-hist(audio_len[1,])
+audio_len_train = sapply(trainMels, dim)
+audio_len_test = sapply(testMels,dim)
+boxplot(audio_len_train[1,])
+hist(audio_len_train[1,])
+hist(audio_len_test[1,])
 
+max(audio_len_test[1,])
+max(audio_len_train[1,])
 dim(trainMels[[1]])
 dim(trainMels[[3]])
-mean(audio_len[1,])
+mean(audio_len_train[1,])
 ```
 
 ```{r}
@@ -114,58 +124,39 @@ mean(audio_len[1,])
 
 # Define the function
 addResolution <- function(matrix) {
-  test <- matrix(0,116,20)
+  test <- matrix(0,141,20)
   dimension <- dim(matrix)
   test[1:dimension[1], 1:dimension[2]] <- matrix
   test
 }
 
-
+# Add more elements to the matrices
 trainMels_stretched <- lapply(trainMels, addResolution)
+testMels_stretched <- lapply(testMels, addResolution)
 
+# Draw spectrograms
 dim(trainMels_stretched[[1]])
 image(trainMels_stretched[[1]])
-```
 
-### Check accuracy of randomForest model
+dim(testMels_stretched[[10]])
+image(testMels_stretched[[10]])
 
-```{r rf-acc}
-# First model
-testMels = mels[test$filename]
-testM = do.call(rbind, testMels)
-testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
-rownames(testM) = testM.labels
-head(testM)
+# Flatten the matrices out
+trainMels_stretched <- matrix(unlist(trainMels_stretched), ncol=(141*20), byrow=TRUE)
+testMels_stretched <- matrix(unlist(testMels_stretched), ncol=(141*20), byrow=TRUE)
 
-# Let's make predictions with our classifier on a test set
-table = table(testM.labels, predict(rf, testM, type = "response"))
-table
+# Normalise
+trainMels_stretched <- trainMels_stretched/maxMels
+testMels_stretched <- testMels_stretched/maxMels
 
-accuracy_pct = round(sum(diag(table)) / sum(table) * 100, 2)
-print(paste("accuracy across whole dataset", accuracy_pct, "%"))
-
-# To look at the predictions 
-predict(rf, testM, type = "prob")
-
-predictions = character(nrow(test))
-for (i in 1:nrow(test)) {
-  mel = testMels[[i]]
-  prediction = names(which.max(colMeans(predict(rf, mel, type="prob"))))
-  predictions[i] = prediction
-}
-testWithPredictions = data.frame(test, predictions)
-testWithPredictions
-correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
-accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
-print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
 
 ## Deep learning classification with the R interface to Keras based on MFCC
 
 ```{r keras, warning=FALSE}
-X_train = trainM
+X_train = trainMels_stretched
 Y_train = to_categorical(as.integer(trainM.labels) - 1)
-X_test = testM
+X_test = testMels_stretched
 Y_test = to_categorical(as.integer(testM.labels) - 1)
 
 # Build the sequential model
@@ -211,6 +202,33 @@ history = model %>% fit(X_train, Y_train, batch_size = 32, epochs = 50,
 ```{r keras-plot}
 plot(history)
 ```
+
+### Check accuracy of the model
+
+```{r rf-acc}
+# Let's make predictions with our classifier on a test set
+table = table(testM.labels, predict(rf, testM, type = "response"))
+table
+
+accuracy_pct = round(sum(diag(table)) / sum(table) * 100, 2)
+print(paste("accuracy across whole dataset", accuracy_pct, "%"))
+
+# To look at the predictions 
+predict(rf, testM, type = "prob")
+
+predictions = character(nrow(test))
+for (i in 1:nrow(test)) {
+  mel = testMels[[i]]
+  prediction = names(which.max(colMeans(predict(rf, mel, type="prob"))))
+  predictions[i] = prediction
+}
+testWithPredictions = data.frame(test, predictions)
+testWithPredictions
+correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
+accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
+print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
+```
+
 
 ### Check accuracy of keras model
 
