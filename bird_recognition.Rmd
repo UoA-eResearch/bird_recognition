@@ -1,9 +1,12 @@
 ---
 title: "Bird Recognition"
 output:
+  html_document:
+    df_print: paged
+    toc: yes
   html_notebook:
-    toc: TRUE
-    toc_float: TRUE
+    toc: yes
+    toc_float: yes
 ---
 
 GitHub repo: https://github.com/UoA-eResearch/bird_recognition
@@ -76,15 +79,31 @@ Each calltype seems to have a unique spectrogram.
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r split}
+test_row <- sample(1:3,1)
+
 test <- metadata %>% 
           group_by(birdid, calltype) %>% 
-          filter(row_number()==1) %>% 
+          filter(row_number()==test_row) %>% 
           glimpse()
           
 train <-  metadata %>% 
           group_by(birdid, calltype) %>% 
-          filter(row_number()!=1) %>% 
+          filter(row_number()!=test_row) %>% 
           glimpse()
+```
+```{r}
+train %>% 
+  ggplot(aes(birdid)) +
+    geom_bar(stat = "count") +
+    facet_grid(calltype~.) +
+    theme_minimal()
+
+test %>% 
+  ggplot(aes(birdid)) +
+    geom_bar(stat = "count") +
+    facet_grid(calltype~.) +
+    theme_minimal()
+
 ```
 
 ```{r rf}
@@ -109,11 +128,13 @@ set.seed(1337)
 audio_len_train = sapply(trainMels, dim)
 audio_len_test = sapply(testMels,dim)
 boxplot(audio_len_train[1,])
-hist(audio_len_train[1,])
-hist(audio_len_test[1,])
+hist(audio_len_train[1,], breaks = 50)
+hist(audio_len_test[1,], breaks = 50)
 
 max(audio_len_test[1,])
 max(audio_len_train[1,])
+median(audio_len_test[1,])
+median(audio_len_train[1,])
 dim(trainMels[[1]])
 dim(trainMels[[3]])
 mean(audio_len_train[1,])
@@ -123,24 +144,49 @@ mean(audio_len_train[1,])
 ### Adding more resolution to the spectrogram
 
 # Define the function
-addResolution <- function(matrix) {
+addResolution <- function(matrixI) {
   test <- matrix(0,141,20)
-  dimension <- dim(matrix)
-  test[1:dimension[1], 1:dimension[2]] <- matrix
+  dimension <- dim(matrixI)
+  test[1:dimension[1], 1:dimension[2]] <- matrixI
   test
 }
 
-# Add more elements to the matrices
+# Only extract 20 first timesteps
+extract20 <- function(matrixI) {
+  timestepTake <- 20
+  test <- matrix(0,timestepTake,20)
+  dimensionM <- dim(matrixI)
+  timestepM <- min(timestepTake,dimensionM[1])
+  test[1:timestepM, 1:dimensionM[2]] <- matrixI[1:timestepM, 1:dimensionM[2]]
+  test
+}
+
+# Adding more elements to the matrices
 trainMels_stretched <- lapply(trainMels, addResolution)
 testMels_stretched <- lapply(testMels, addResolution)
 
+# Only taking the first 20 timesteps othwerwise zero
+trainMels_20 <- lapply(trainMels, extract20)
+testMels_20 <- lapply(testMels, extract20)
+```
+
+```{r}
 # Draw spectrograms
-dim(trainMels_stretched[[1]])
-image(trainMels_stretched[[1]])
+dim(trainMels_stretched[[1]]/maxMels)
+image(trainMels_stretched[[1]]/maxMels)
 
 dim(testMels_stretched[[10]])
 image(testMels_stretched[[10]])
 
+# Draw spectrograms
+dim(trainMels_20[[1]]/maxMels)
+image(trainMels_20[[1]]/maxMels)
+
+dim(testMels_20[[10]])
+image(testMels_20[[10]])
+```
+
+```{r}
 # Flatten the matrices out
 trainMels_stretched <- matrix(unlist(trainMels_stretched), ncol=(141*20), byrow=TRUE)
 testMels_stretched <- matrix(unlist(testMels_stretched), ncol=(141*20), byrow=TRUE)
@@ -149,36 +195,58 @@ testMels_stretched <- matrix(unlist(testMels_stretched), ncol=(141*20), byrow=TR
 trainMels_stretched <- trainMels_stretched/maxMels
 testMels_stretched <- testMels_stretched/maxMels
 
+# Flatten the matrices out
+trainMels_20 <- matrix(unlist(trainMels_20), ncol=(20*20), byrow=TRUE)
+testMels_20 <- matrix(unlist(testMels_20), ncol=(20*20), byrow=TRUE)
+
+# Normalise
+trainMels_20 <- trainMels_20/maxMels
+testMels_20 <- testMels_20/maxMels
 ```
+
+
+## Using Random-Forest
+```{r}
+rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
+rf
+```
+
+```{r}
+rf = randomForest(trainMels_stretched, train$birdid, xtest=testMels_stretched, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 54)
+rf
+```
+
+
 
 ## Deep learning classification with the R interface to Keras based on MFCC
 
 ```{r keras, warning=FALSE}
-X_train = trainMels_stretched
+# Assigning input and output variables
+X_train <-  trainMels_20
+X_test <-  testMels_20
 Y_train <-  to_categorical(as.integer(train$birdid) -1)
-X_test = testMels_stretched
-Y_test = to_categorical(as.integer(test$birdid) - 1)
+Y_test <-  to_categorical(as.integer(test$birdid) - 1)
 
 # Build the sequential model
 model = keras_model_sequential()
 model %>%
   # Input shape layer = c(samples, rows, cols, channels)
-  layer_reshape(input_shape=ncol(X_train),target_shape=c(1,1,ncol(X_train))) %>% 
+  layer_reshape(input_shape=400,target_shape=c(20,20,1)) %>% 
   # First conv 2d layer with 128 neurons, kernel size of 8 x 8 and stride of 1 x 1
-  layer_conv_2d(128, c(8,8), c(1,1), padding='same') %>%
+  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
   layer_batch_normalization() %>%
   layer_activation("relu") %>%
-  layer_dropout(0.5) %>%
+  layer_dropout(0.7) %>%
   # Second conv 2d layer with 256 neurons, kernel size of 5 x 5 and stride of 1 x 1
   layer_conv_2d(256, c(5,5), c(1,1), padding='same') %>%
   layer_batch_normalization() %>%
   layer_activation("relu") %>%
-  layer_dropout(0.5) %>%
+  layer_dropout(0.7) %>%
   # Third conv 2d layer with 128 neurons, kernel size of 3 x 3 and stride of 1 x 1
   layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
   layer_batch_normalization() %>%
   layer_activation("relu") %>%
-  layer_dropout(0.2) %>%
+  layer_dropout(0.7) %>%
   # Average pooling layer
   layer_global_average_pooling_2d() %>%
   # Activation output layer with 2 classes
@@ -194,7 +262,7 @@ model %>% compile(loss = 'categorical_crossentropy',
 reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
                                            patience = 50, min_lr = 0.0001)
 # Start learning
-history = model %>% fit(X_train, Y_train, batch_size = 32, epochs = 50,
+history = model %>% fit(X_train, Y_train, epochs = 50,
              validation_data = list(X_test, Y_test),
              verbose = 1, callbacks = reduce_lr)
 ```
