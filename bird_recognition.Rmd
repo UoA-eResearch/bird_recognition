@@ -29,7 +29,7 @@ library(keras)
 library(ggplot2)
 ```
 
-## Load the wave files. Separate out the metadata from the filename into columns. Render some spectrograms
+## Load the wave files. Separate out the metadata from the filename into columns. 
 
 ```{r load}
 files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
@@ -44,7 +44,10 @@ wavs = setNames(
 metadata = data.frame(str_split_fixed(files_without_extension, "_", 3))
 metadata = cbind(metadata, files_without_extension)
 colnames(metadata) = c("birdid", "calltype", "idnumber", "filename")
-head(metadata)
+```
+
+Render some spectrograms
+```{r visualise spectro}
 oscillo(wavs[[1]])
 birds = unique(metadata$birdid)
 filtered = filter(metadata, birdid == birds[1])
@@ -54,17 +57,6 @@ for (i in 1:nrow(filtered)) {
 }
 ```
 
-
-```{r}
-wavs_tuneR = setNames(
-  lapply(
-    files,
-    read_audio
-  ),
-  files_without_extension
-)
-
-```
 
 ```{r}
 metadata %>%
@@ -80,7 +72,7 @@ Each calltype seems to have a unique spectrogram.
 
 ```{r split}
 test_row <- sample(1:3,1)
-
+test_row
 test <- metadata %>% 
           group_by(birdid, calltype) %>% 
           filter(row_number()==test_row) %>% 
@@ -92,25 +84,22 @@ train <-  metadata %>%
           glimpse()
 ```
 ```{r}
-train %>% 
-  ggplot(aes(birdid)) +
+metadata %>%
+  group_by(birdid,calltype) %>% 
+  mutate(isTrain=row_number()==test_row) %>% 
+  ungroup() %>% 
+  ggplot(aes(birdid,fill=isTrain)) +
     geom_bar(stat = "count") +
     facet_grid(calltype~.) +
     theme_minimal()
-
-test %>% 
-  ggplot(aes(birdid)) +
-    geom_bar(stat = "count") +
-    facet_grid(calltype~.) +
-    theme_minimal()
-
 ```
 
 ```{r rf}
 mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
-head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
-image(mels[[1]])
-maxMels <- do.call(max,mels)
+#head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
+#image(mels[[1]])
+maxMels <- do.call(max,mels) # Calculate the max across the whole list of matrices to scale the predictor values between 0-1 later
+
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
 trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
 trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
@@ -124,25 +113,25 @@ rownames(testM) = testM.labels
 set.seed(1337)
 ```
 
-```{r}
+Audio recordings have different lengths
+```{r audio_len}
 audio_len_train = sapply(trainMels, dim)
 audio_len_test = sapply(testMels,dim)
 boxplot(audio_len_train[1,])
 hist(audio_len_train[1,], breaks = 50)
 hist(audio_len_test[1,], breaks = 50)
 
-max(audio_len_test[1,])
-max(audio_len_train[1,])
-median(audio_len_test[1,])
-median(audio_len_train[1,])
-dim(trainMels[[1]])
-dim(trainMels[[3]])
-mean(audio_len_train[1,])
+#max(audio_len_test[1,])
+# max(audio_len_train[1,])
+# median(audio_len_test[1,])
+# median(audio_len_train[1,])
+#dim(trainMels[[1]])
+#dim(trainMels[[3]])
+#mean(audio_len_train[1,])
 ```
 
 ```{r}
 ### Adding more resolution to the spectrogram
-
 # Define the function
 addResolution <- function(matrixI) {
   test <- matrix(0,141,20)
@@ -185,6 +174,16 @@ image(trainMels_20[[1]]/maxMels)
 dim(testMels_20[[10]])
 image(testMels_20[[10]])
 ```
+```{r}
+fem_distance <- test %>% 
+  filter(calltype=="distance") %>% 
+  filter(substr(birdid,1,3)=="fem") %>%
+  select(filename)
+
+for (f in testMels_20[fem_distance$filename]) {
+  image(f)
+}
+```
 
 ```{r}
 # Flatten the matrices out
@@ -205,6 +204,8 @@ testMels_20 <- testMels_20/maxMels
 ```
 
 
+
+
 ## Using Random-Forest
 ```{r}
 rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
@@ -212,8 +213,7 @@ rf
 ```
 
 ```{r}
-rf = randomForest(trainMels_stretched, train$birdid, xtest=testMels_stretched, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 54)
-rf
+rf_pred = predict(rf,testMels_20, type="response")
 ```
 
 
