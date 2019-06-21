@@ -23,6 +23,7 @@ library(tuneR)
 library(seewave)
 library(dplyr)
 library(tools)
+library(ranger)
 library(randomForest)
 library(stringr)
 library(keras)
@@ -71,6 +72,7 @@ Each calltype seems to have a unique spectrogram.
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r split}
+set.seed(1337)
 test_row <- sample(1:3,1)
 test_row
 test <- metadata %>% 
@@ -110,7 +112,6 @@ testM = do.call(rbind, testMels)
 testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
 rownames(testM) = testM.labels
 
-set.seed(1337)
 ```
 
 Audio recordings have different lengths
@@ -140,9 +141,9 @@ addResolution <- function(matrixI) {
   test
 }
 
+timestepTake <- 20
 # Only extract 20 first timesteps
 extract20 <- function(matrixI) {
-  timestepTake <- 20
   test <- matrix(0,timestepTake,20)
   dimensionM <- dim(matrixI)
   timestepM <- min(timestepTake,dimensionM[1])
@@ -175,14 +176,14 @@ dim(testMels_20[[10]])
 image(testMels_20[[10]])
 ```
 ```{r}
-fem_distance <- test %>% 
-  filter(calltype=="distance") %>% 
-  filter(substr(birdid,1,3)=="fem") %>%
-  select(filename)
-
-for (f in testMels_20[fem_distance$filename]) {
-  image(f)
-}
+# fem_distance <- test %>% 
+#   filter(calltype=="distance") %>% 
+#   filter(substr(birdid,1,3)=="fem") %>%
+#   select(filename)
+# 
+# for (f in testMels_20[fem_distance$filename]) {
+#   image(f)
+# }
 ```
 
 ```{r}
@@ -204,19 +205,45 @@ testMels_20 <- testMels_20/maxMels
 ```
 
 
-
-
 ## Using Random-Forest
 ```{r}
-rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 4)
+rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 20)
 rf
+
+round(sum(diag(rf$test$confusion)) / sum(rf$test$confusion) * 100, 2)
 ```
 
+What about adding column means for each timestep?
 ```{r}
-rf_pred = predict(rf,testMels_20, type="response")
+# Feature engineering
+## Add column means or timestep means
+colnames(trainMels_20) <- c(paste0("pix",1:400))
+colnames(testMels_20) <- c(paste0("pix",1:400))
+
+addColMeans <- function(matrixI) {
+  mcol <- matrix(nrow=nrow(matrixI), ncol=timestepTake)
+  for (i in 1:timestepTake) {
+    mcol[,i] <- rowMeans(matrixI[,i+20*(0:19)])
+  }
+  colnames(mcol) <- c(paste0("m",1:20))
+  results <- cbind(matrixI, mcol)
+}
+
+trainMels_20_M <- addColMeans(trainMels_20)
+testMels_20_M <- addColMeans(testMels_20)
+trainMels_20_M <- cbind(trainMels_20_M,train$birdid)
+testMels_20_M <- cbind(testMels_20_M,test$birdid)
+
+colnames(trainMels_20_M)[ncol(trainMels_20_M)] <- "birdid"
+colnames(testMels_20_M)[ncol(testMels_20_M)] <- "birdid"
+
+M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 4000)
+M_ranger
+
+t_M <- table(predict(M_ranger,testMels_20_M)$predictions, test$birdid)
+round(sum(diag(t_M)) / sum(t_M) * 100, 2)
 ```
-
-
+Adding timesteps means doesn't boost performance
 
 ## Deep learning classification with the R interface to Keras based on MFCC
 
