@@ -72,7 +72,7 @@ Each calltype seems to have a unique spectrogram.
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r split}
-set.seed(1337)
+#set.seed(1337)
 test_row <- sample(1:3,1)
 test_row
 test <- metadata %>% 
@@ -259,24 +259,28 @@ model = keras_model_sequential()
 model %>%
   # Input shape layer = c(samples, rows, cols, channels)
   layer_reshape(input_shape=400,target_shape=c(20,20,1)) %>% 
-  # First conv 2d layer with 128 neurons, kernel size of 8 x 8 and stride of 1 x 1
+  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
+  layer_activation("relu") %>%
+  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
+  layer_activation("relu") %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.5) %>% 
   layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
-  layer_batch_normalization() %>%
   layer_activation("relu") %>%
-  layer_dropout(0.7) %>%
-  # Second conv 2d layer with 256 neurons, kernel size of 5 x 5 and stride of 1 x 1
-  layer_conv_2d(256, c(5,5), c(1,1), padding='same') %>%
-  layer_batch_normalization() %>%
-  layer_activation("relu") %>%
-  layer_dropout(0.7) %>%
-  # Third conv 2d layer with 128 neurons, kernel size of 3 x 3 and stride of 1 x 1
+  #layer_max_pooling_2d(pool_size = c(2,2)) %>% 
   layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
-  layer_batch_normalization() %>%
   layer_activation("relu") %>%
-  layer_dropout(0.7) %>%
-  # Average pooling layer
-  layer_global_average_pooling_2d() %>%
-  # Activation output layer with 2 classes
+  layer_max_pooling_2d(pool_size = c(2,2)) %>% 
+  layer_dropout(0.5) %>% 
+  # layer_conv_2d(256, c(3,3), c(1,1), padding='same') %>%
+  # layer_activation("relu") %>%
+  # layer_conv_2d(256, c(3,3), c(1,1), padding='same') %>%
+  # layer_global_average_pooling_2d() %>% # Average pooling layer
+  # layer_dropout(0.5) %>%
+  layer_flatten() %>%
+  layer_dense(64, activation ='relu') %>% 
+  layer_dropout(0.5) %>% 
+  layer_dense(64, activation ='relu') %>% 
   layer_dense(units = ncol(Y_train),  activation='softmax')
 
 # Model compile
@@ -289,60 +293,13 @@ model %>% compile(loss = 'categorical_crossentropy',
 reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
                                            patience = 50, min_lr = 0.0001)
 # Start learning
-history = model %>% fit(X_train, Y_train, epochs = 50,
+history = model %>% fit(X_train, Y_train, epochs = 200,
              validation_data = list(X_test, Y_test),
              verbose = 1, callbacks = reduce_lr)
 ```
 
 ```{r keras-plot}
 plot(history)
-```
-
-### Check accuracy of the model
-
-```{r rf-acc}
-# Let's make predictions with our classifier on a test set
-table = table(testM.labels, predict(rf, testM, type = "response"))
-table
-
-accuracy_pct = round(sum(diag(table)) / sum(table) * 100, 2)
-print(paste("accuracy across whole dataset", accuracy_pct, "%"))
-
-# To look at the predictions 
-predict(rf, testM, type = "prob")
-
-predictions = character(nrow(test))
-for (i in 1:nrow(test)) {
-  mel = testMels[[i]]
-  prediction = names(which.max(colMeans(predict(rf, mel, type="prob"))))
-  predictions[i] = prediction
-}
-testWithPredictions = data.frame(test, predictions)
-testWithPredictions
-correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
-accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
-print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
-```
-
-
-### Check accuracy of keras model
-
-```{r keras-acc}
-# Score on the test set
-model %>% evaluate(X_test, Y_test, batch_size = 32)
-
-predictions = character(nrow(test))
-for (i in 1:nrow(test)) {
-  mel = testMels[[i]]
-  prediction = which.max(colMeans(predict_proba(model, mel)))
-  prediction = levels(testM.labels)[prediction]
-  predictions[i] = prediction
-}
-testWithPredictions = data.frame(test, predictions)
-testWithPredictions
-correct_predictions = nrow(filter(testWithPredictions, birdid == predictions))
-accuracy_pct = round(correct_predictions / nrow(test) * 100, 2)
-print(paste(correct_predictions, "/", nrow(test), "wavs in the test dataset correctly identifed. Accuracy: ", accuracy_pct, "%"))
 ```
 
 randomForest did better.
