@@ -207,10 +207,10 @@ testMels_20 <- testMels_20/maxMels
 
 ## Using Random-Forest
 ```{r}
-rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 4000, mtry = 20)
+rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 1000, mtry = 20)
 rf
 
-round(sum(diag(rf$test$confusion)) / sum(rf$test$confusion) * 100, 2)
+round(sum(diag(rf$test$confusion)) / sum(rf$test$confusion[,1:(ncol(rf$test$confusion) -1)]) * 100, 2)
 ```
 
 What about adding column means for each timestep?
@@ -236,8 +236,11 @@ testMels_20_M <- cbind(testMels_20_M,test$birdid)
 
 colnames(trainMels_20_M)[ncol(trainMels_20_M)] <- "birdid"
 colnames(testMels_20_M)[ncol(testMels_20_M)] <- "birdid"
+```
 
-M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 4000)
+# Train new Random Forest model
+```{r}
+M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 2000)
 M_ranger
 
 t_M <- table(predict(M_ranger,testMels_20_M)$predictions, test$birdid)
@@ -270,7 +273,7 @@ model %>%
   #layer_max_pooling_2d(pool_size = c(2,2)) %>% 
   layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
   layer_activation("relu") %>%
-  layer_max_pooling_2d(pool_size = c(2,2)) %>% 
+  layer_average_pooling_2d(pool_size = c(2,2)) %>% 
   layer_dropout(0.5) %>% 
   # layer_conv_2d(256, c(3,3), c(1,1), padding='same') %>%
   # layer_activation("relu") %>%
@@ -281,7 +284,10 @@ model %>%
   layer_dense(64, activation ='relu') %>% 
   layer_dropout(0.5) %>% 
   layer_dense(64, activation ='relu') %>% 
+  layer_dropout(0.5) %>%
+  #layer_average_pooling_2d(pool_size = c(1,1)) %>% 
   layer_dense(units = ncol(Y_train),  activation='softmax')
+#layer_dropout(0.5) %>%
 
 # Model compile
 model %>% compile(loss = 'categorical_crossentropy',
