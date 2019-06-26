@@ -48,7 +48,7 @@ colnames(metadata) = c("birdid", "calltype", "idnumber", "filename")
 ```
 
 Render some spectrograms
-```{r visualise spectro}
+```{r visualise spectro, eval=FALSE, include=FALSE}
 oscillo(wavs[[1]])
 birds = unique(metadata$birdid)
 filtered = filter(metadata, birdid == birds[1])
@@ -58,20 +58,9 @@ for (i in 1:nrow(filtered)) {
 }
 ```
 
-
-```{r}
-metadata %>%
-  mutate(gender=substr(metadata$birdid,1,3)) %>% 
-  ggplot(aes(gender, fill=gender)) +
-  geom_bar() +
-  facet_grid(.~metadata$calltype) 
-```
-
-Each calltype seems to have a unique spectrogram.
-
 ## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
 
-```{r split}
+```{r split, echo=FALSE}
 #set.seed(1337)
 test_row <- sample(1:3,1)
 test_row
@@ -85,10 +74,12 @@ train <-  metadata %>%
           filter(row_number()!=test_row) %>% 
           glimpse()
 ```
+
+## Visualise the train/test distribution
 ```{r}
 metadata %>%
   group_by(birdid,calltype) %>% 
-  mutate(isTrain=row_number()==test_row) %>% 
+  mutate(isTrain=row_number()!=test_row) %>% 
   ungroup() %>% 
   ggplot(aes(birdid,fill=isTrain)) +
     geom_bar(stat = "count") +
@@ -98,48 +89,38 @@ metadata %>%
 
 ```{r rf}
 mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
-#head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
-#image(mels[[1]])
 maxMels <- do.call(max,mels) # Calculate the max across the whole list of matrices to scale the predictor values between 0-1 later
 
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
-trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
-rownames(trainM) = trainM.labels
+# trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
+# trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
+# rownames(trainM) = trainM.labels
 
 testMels = mels[test$filename]
-testM = do.call(rbind, testMels)
-testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
-rownames(testM) = testM.labels
+# testM = do.call(rbind, testMels)
+# testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
+# rownames(testM) = testM.labels
 
 ```
 
 Audio recordings have different lengths
-```{r audio_len}
+```{r audio_len, echo=FALSE}
 audio_len_train = sapply(trainMels, dim)
 audio_len_test = sapply(testMels,dim)
 boxplot(audio_len_train[1,])
 hist(audio_len_train[1,], breaks = 50)
 hist(audio_len_test[1,], breaks = 50)
-
-#max(audio_len_test[1,])
-# max(audio_len_train[1,])
-# median(audio_len_test[1,])
-# median(audio_len_train[1,])
-#dim(trainMels[[1]])
-#dim(trainMels[[3]])
-#mean(audio_len_train[1,])
 ```
 
 ```{r}
 ### Adding more resolution to the spectrogram
-# Define the function
-addResolution <- function(matrixI) {
-  test <- matrix(0,141,20)
-  dimension <- dim(matrixI)
-  test[1:dimension[1], 1:dimension[2]] <- matrixI
-  test
-}
+# # Define the function
+# addResolution <- function(matrixI) {
+#   test <- matrix(0,141,20)
+#   dimension <- dim(matrixI)
+#   test[1:dimension[1], 1:dimension[2]] <- matrixI
+#   test
+# }
 
 timestepTake <- 20
 # Only extract 20 first timesteps
@@ -151,22 +132,22 @@ extract20 <- function(matrixI) {
   test
 }
 
-# Adding more elements to the matrices
-trainMels_stretched <- lapply(trainMels, addResolution)
-testMels_stretched <- lapply(testMels, addResolution)
+# # Adding more elements to the matrices
+# trainMels_stretched <- lapply(trainMels, addResolution)
+# testMels_stretched <- lapply(testMels, addResolution)
 
 # Only taking the first 20 timesteps othwerwise zero
 trainMels_20 <- lapply(trainMels, extract20)
 testMels_20 <- lapply(testMels, extract20)
 ```
 
-```{r}
-# Draw spectrograms
-dim(trainMels_stretched[[1]]/maxMels)
-image(trainMels_stretched[[1]]/maxMels)
-
-dim(testMels_stretched[[10]])
-image(testMels_stretched[[10]])
+```{r echo=FALSE}
+# # Draw spectrograms
+# dim(trainMels_stretched[[1]]/maxMels)
+# image(trainMels_stretched[[1]]/maxMels)
+# 
+# dim(testMels_stretched[[10]])
+# image(testMels_stretched[[10]])
 
 # Draw spectrograms
 dim(trainMels_20[[1]]/maxMels)
@@ -175,25 +156,15 @@ image(trainMels_20[[1]]/maxMels)
 dim(testMels_20[[10]])
 image(testMels_20[[10]])
 ```
+
 ```{r}
-# fem_distance <- test %>% 
-#   filter(calltype=="distance") %>% 
-#   filter(substr(birdid,1,3)=="fem") %>%
-#   select(filename)
+# # Flatten the matrices out
+# trainMels_stretched <- matrix(unlist(trainMels_stretched), ncol=(141*20), byrow=TRUE)
+# testMels_stretched <- matrix(unlist(testMels_stretched), ncol=(141*20), byrow=TRUE)
 # 
-# for (f in testMels_20[fem_distance$filename]) {
-#   image(f)
-# }
-```
-
-```{r}
-# Flatten the matrices out
-trainMels_stretched <- matrix(unlist(trainMels_stretched), ncol=(141*20), byrow=TRUE)
-testMels_stretched <- matrix(unlist(testMels_stretched), ncol=(141*20), byrow=TRUE)
-
-# Normalise
-trainMels_stretched <- trainMels_stretched/maxMels
-testMels_stretched <- testMels_stretched/maxMels
+# # Normalise
+# trainMels_stretched <- trainMels_stretched/maxMels
+# testMels_stretched <- testMels_stretched/maxMels
 
 # Flatten the matrices out
 trainMels_20 <- matrix(unlist(trainMels_20), ncol=(20*20), byrow=TRUE)
@@ -212,6 +183,38 @@ rf
 
 round(sum(diag(rf$test$confusion)) / sum(rf$test$confusion[,1:(ncol(rf$test$confusion) -1)]) * 100, 2)
 ```
+
+Visualise wrong predictions
+
+```{r}
+fn <- rf$test$predicted != test$birdid
+
+for (i in 1:length(test$birdid)) {
+  if (fn[i]) { # If it is false negative
+    par(mfrow=c(4,4))
+    image(matrix(unlist(testMels_20[i,]),ncol = 20, byrow = TRUE))
+    title(paste0(rf$test$predicted[i],">",test$birdid[i]))
+    # Show ground truth bird's spectrograms in train dataset
+    groundTBird <- train %>% 
+      filter(birdid == test$birdid[i])
+    groundTBird <- mels[groundTBird$filename]
+    for (gt in groundTBird) {
+      image(gt)
+      title(test$birdid[i])
+    }
+    # # Show false predicted bird's spectrograms in train dataset
+    # predBird <- test %>% 
+    #   filter(birdid == rf$test$predicted[i])
+    # predBird <- mels[predBird$filename]
+    # for (gt in predBird) {
+    #   image(gt)
+    #   title(rf$test$predicted[i])
+    #}
+  }
+}
+
+```
+
 
 What about adding column means for each timestep?
 ```{r}
@@ -240,8 +243,8 @@ colnames(testMels_20_M)[ncol(testMels_20_M)] <- "birdid"
 
 # Train new Random Forest model
 ```{r}
-M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 2000)
-M_ranger
+M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 2000, importance = "impurity")
+plot(M_ranger$variable.importance, pch=19, col="#00000030")
 
 t_M <- table(predict(M_ranger,testMels_20_M)$predictions, test$birdid)
 round(sum(diag(t_M)) / sum(t_M) * 100, 2)
@@ -261,7 +264,7 @@ Y_test <-  to_categorical(as.integer(test$birdid) - 1)
 model = keras_model_sequential()
 model %>%
   # Input shape layer = c(samples, rows, cols, channels)
-  layer_reshape(input_shape=400,target_shape=c(20,20,1)) %>% 
+  layer_reshape(input_shape=ncol(X_train),target_shape=c(20,20,1)) %>% 
   layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
   layer_activation("relu") %>%
   layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
@@ -301,11 +304,17 @@ reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
 # Start learning
 history = model %>% fit(X_train, Y_train, epochs = 200,
              validation_data = list(X_test, Y_test),
-             verbose = 1, callbacks = reduce_lr)
+             verbose = 1, callbacks = reduce_lr, verbose=0)
 ```
 
 ```{r keras-plot}
 plot(history)
+```
+
+```{r keras-confusion-matrix}
+birdPred <- model %>% predict_classes(X_test)
+t_CNN <- table(birdPred,test$birdid)
+round(sum(diag(t_CNN)) / sum(t_CNN) * 100, 2)
 ```
 
 randomForest did better.
