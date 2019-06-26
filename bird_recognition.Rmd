@@ -104,7 +104,7 @@ testMels = mels[test$filename]
 ```
 
 Audio recordings have different lengths
-```{r audio_len, echo=FALSE}
+```{r audio_len, eval=FALSE, include=FALSE}
 audio_len_train = sapply(trainMels, dim)
 audio_len_test = sapply(testMels,dim)
 boxplot(audio_len_train[1,])
@@ -155,6 +155,7 @@ image(trainMels_20[[1]]/maxMels)
 
 dim(testMels_20[[10]])
 image(testMels_20[[10]])
+
 ```
 
 ```{r}
@@ -173,6 +174,7 @@ testMels_20 <- matrix(unlist(testMels_20), ncol=(20*20), byrow=TRUE)
 # Normalise
 trainMels_20 <- trainMels_20/maxMels
 testMels_20 <- testMels_20/maxMels
+
 ```
 
 
@@ -191,27 +193,28 @@ fn <- rf$test$predicted != test$birdid
 
 for (i in 1:length(test$birdid)) {
   if (fn[i]) { # If it is false negative
-    par(mfrow=c(4,4))
-    image(matrix(unlist(testMels_20[i,]),ncol = 20, byrow = TRUE))
+    par(mfrow=c(3,3))
+    image(t(matrix(unlist(testMels_20[i,]),ncol = 20, byrow = TRUE)))
     title(paste0(rf$test$predicted[i],">",test$birdid[i]))
     # Show ground truth bird's spectrograms in train dataset
-    groundTBird <- train %>% 
-      filter(birdid == test$birdid[i])
-    groundTBird <- mels[groundTBird$filename]
-    for (gt in groundTBird) {
-      image(gt)
+    groundTBird <- which(train$birdid==test$birdid[i])
+    for (id in groundTBird) {
+      image(t(matrix(unlist(trainMels_20[id,]),ncol = 20, byrow = TRUE)))
       title(test$birdid[i])
     }
-    # # Show false predicted bird's spectrograms in train dataset
-    # predBird <- test %>% 
-    #   filter(birdid == rf$test$predicted[i])
-    # predBird <- mels[predBird$filename]
-    # for (gt in predBird) {
-    #   image(gt)
-    #   title(rf$test$predicted[i])
-    #}
+    
+    par(mfrow=c(3,3))
+    image(t(matrix(unlist(testMels_20[i,]),ncol = 20, byrow = TRUE)))
+    title(paste0(rf$test$predicted[i],">",test$birdid[i]))
+    # Show falsely predicted bird's spectrograms in train dataset
+    predBird <- which(train$birdid==rf$test$predicted[i])
+    for (id in predBird) {
+      image(t(matrix(unlist(trainMels_20[id,]),ncol = 20, byrow = TRUE)))
+      title(rf$test$predicted[i])
+    }
   }
 }
+
 
 ```
 
