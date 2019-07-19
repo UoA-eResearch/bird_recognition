@@ -58,24 +58,22 @@ for (i in 1:nrow(filtered)) {
 }
 ```
 
-## Split dataset into train / test. The test dataset will contain one row for each combination of birdid / calltype
+## Split dataset into train / test since the sample size is small, the validation set won't be used for now. The test dataset will contain one row for each combination of birdid / calltype
 
 ```{r split, echo=FALSE}
-#set.seed(1337)
+set.seed(1337)
 test_row <- sample(1:3,1)
 test_row
 test <- metadata %>% 
           group_by(birdid, calltype) %>% 
-          filter(row_number()==test_row) %>% 
-          glimpse()
+          filter(row_number()==test_row)
           
 train <-  metadata %>% 
           group_by(birdid, calltype) %>% 
-          filter(row_number()!=test_row) %>% 
-          glimpse()
+          filter(row_number()!=test_row)
 ```
 
-## Visualise the train/test distribution
+## Visualise the train/test distribution. Here we have three samples for each call type for each individual bird thus we will train our model on two samples, validate it on the last one. In the end, the model will be evaluated on the whole dataset.
 ```{r}
 metadata %>%
   group_by(birdid,calltype) %>% 
@@ -89,39 +87,21 @@ metadata %>%
 
 ```{r rf}
 mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
-maxMels <- do.call(max,mels) # Calculate the max across the whole list of matrices to scale the predictor values between 0-1 later
-
 trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
-# trainM = do.call(rbind, trainMels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-# trainM.labels = rep(train$birdid, lapply(trainMels, function(x) dim(x)[1])) # Create birdid labels for each MFCC
-# rownames(trainM) = trainM.labels
-
 testMels = mels[test$filename]
-# testM = do.call(rbind, testMels)
-# testM.labels = rep(test$birdid, lapply(testMels, function(x) dim(x)[1]))
-# rownames(testM) = testM.labels
-
 ```
 
 Audio recordings have different lengths
-```{r audio_len, eval=FALSE, include=FALSE}
+```{r audio_len, echo=TRUE}
 audio_len_train = sapply(trainMels, dim)
 audio_len_test = sapply(testMels,dim)
-boxplot(audio_len_train[1,])
 hist(audio_len_train[1,], breaks = 50)
 hist(audio_len_test[1,], breaks = 50)
 ```
 
-```{r}
-### Adding more resolution to the spectrogram
-# # Define the function
-# addResolution <- function(matrixI) {
-#   test <- matrix(0,141,20)
-#   dimension <- dim(matrixI)
-#   test[1:dimension[1], 1:dimension[2]] <- matrixI
-#   test
-# }
+Since the audio lengths are different and most of them fall under 20 timesteps, the first 20 timesteps would be extracted. In addition, the number of MFCC coefficients is 20 so the data would have a nice (20,20) shape.
 
+```{r}
 timestepTake <- 20
 # Only extract 20 first timesteps
 extract20 <- function(matrixI) {
@@ -132,54 +112,32 @@ extract20 <- function(matrixI) {
   test
 }
 
-# # Adding more elements to the matrices
-# trainMels_stretched <- lapply(trainMels, addResolution)
-# testMels_stretched <- lapply(testMels, addResolution)
-
 # Only taking the first 20 timesteps othwerwise zero
 trainMels_20 <- lapply(trainMels, extract20)
 testMels_20 <- lapply(testMels, extract20)
 ```
 
 ```{r echo=FALSE}
-# # Draw spectrograms
-# dim(trainMels_stretched[[1]]/maxMels)
-# image(trainMels_stretched[[1]]/maxMels)
-# 
-# dim(testMels_stretched[[10]])
-# image(testMels_stretched[[10]])
-
 # Draw spectrograms
-dim(trainMels_20[[1]]/maxMels)
-image(trainMels_20[[1]]/maxMels)
-
-dim(testMels_20[[10]])
+image(trainMels_20[[1]])
 image(testMels_20[[10]])
-
 ```
 
 ```{r}
-# # Flatten the matrices out
-# trainMels_stretched <- matrix(unlist(trainMels_stretched), ncol=(141*20), byrow=TRUE)
-# testMels_stretched <- matrix(unlist(testMels_stretched), ncol=(141*20), byrow=TRUE)
-# 
-# # Normalise
-# trainMels_stretched <- trainMels_stretched/maxMels
-# testMels_stretched <- testMels_stretched/maxMels
-
 # Flatten the matrices out
 trainMels_20 <- matrix(unlist(trainMels_20), ncol=(20*20), byrow=TRUE)
 testMels_20 <- matrix(unlist(testMels_20), ncol=(20*20), byrow=TRUE)
 
 # Normalise
+maxMels <- do.call(max,mels) # Calculate the max across the whole list of matrices to scale the predictor values between 0-1
 trainMels_20 <- trainMels_20/maxMels
 testMels_20 <- testMels_20/maxMels
-
 ```
 
 
 ## Using Random-Forest
 ```{r}
+set.seed(1337) 
 rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 1000, mtry = 20)
 rf
 
@@ -214,12 +172,9 @@ for (i in 1:length(test$birdid)) {
     }
   }
 }
-
-
 ```
 
-
-What about adding column means for each timestep?
+Feature Engineering: what about adding column means for each timestep?
 ```{r}
 # Feature engineering
 ## Add column means or timestep means
@@ -246,15 +201,17 @@ colnames(testMels_20_M)[ncol(testMels_20_M)] <- "birdid"
 
 # Train new Random Forest model
 ```{r}
+set.seed(1337)
 M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 2000, importance = "impurity")
 plot(M_ranger$variable.importance, pch=19, col="#00000030")
 
 t_M <- table(predict(M_ranger,testMels_20_M)$predictions, test$birdid)
+t_M
 round(sum(diag(t_M)) / sum(t_M) * 100, 2)
 ```
-Adding timesteps means doesn't boost performance
+Adding timestep means doesn't boost the performance.
 
-## Deep learning classification with the R interface to Keras based on MFCC
+## Deep learning classification with the R interface to Keras based on MFCC, in particular, a CNN model will be used here.
 
 ```{r keras, warning=FALSE}
 # Assigning input and output variables
@@ -266,34 +223,25 @@ Y_test <-  to_categorical(as.integer(test$birdid) - 1)
 # Build the sequential model
 model = keras_model_sequential()
 model %>%
-  # Input shape layer = c(samples, rows, cols, channels)
   layer_reshape(input_shape=ncol(X_train),target_shape=c(20,20,1)) %>% 
   layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
   layer_activation("relu") %>%
   layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
   layer_activation("relu") %>%
   layer_max_pooling_2d(pool_size = c(2,2)) %>%
-  layer_dropout(0.5) %>% 
+  layer_dropout(0.7) %>% 
   layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
   layer_activation("relu") %>%
-  #layer_max_pooling_2d(pool_size = c(2,2)) %>% 
   layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
   layer_activation("relu") %>%
   layer_average_pooling_2d(pool_size = c(2,2)) %>% 
-  layer_dropout(0.5) %>% 
-  # layer_conv_2d(256, c(3,3), c(1,1), padding='same') %>%
-  # layer_activation("relu") %>%
-  # layer_conv_2d(256, c(3,3), c(1,1), padding='same') %>%
-  # layer_global_average_pooling_2d() %>% # Average pooling layer
-  # layer_dropout(0.5) %>%
+  layer_dropout(0.7) %>% 
   layer_flatten() %>%
   layer_dense(64, activation ='relu') %>% 
   layer_dropout(0.5) %>% 
   layer_dense(64, activation ='relu') %>% 
   layer_dropout(0.5) %>%
-  #layer_average_pooling_2d(pool_size = c(1,1)) %>% 
   layer_dense(units = ncol(Y_train),  activation='softmax')
-#layer_dropout(0.5) %>%
 
 # Model compile
 model %>% compile(loss = 'categorical_crossentropy',
@@ -304,10 +252,14 @@ model %>% compile(loss = 'categorical_crossentropy',
 # Add a callback to reduce the learning rate when reaching the plateau
 reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
                                            patience = 50, min_lr = 0.0001)
+
+```
+
+```{r}
 # Start learning
-history = model %>% fit(X_train, Y_train, epochs = 200,
+history = model %>% fit(X_train, Y_train, epochs = 400,
              validation_data = list(X_test, Y_test),
-             verbose = 1, callbacks = reduce_lr, verbose=0)
+              callbacks = reduce_lr, verbose=1)
 ```
 
 ```{r keras-plot}
