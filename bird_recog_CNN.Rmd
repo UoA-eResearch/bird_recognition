@@ -1,0 +1,71 @@
+---
+title: "bird_recog_CNN"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Deep learning classification with the R interface to Keras based on MFCC, in particular, a CNN model will be used here.
+
+```{r keras, warning=FALSE}
+# Assigning input and output variables
+X_train <-  trainMels_20
+X_test <-  testMels_20
+Y_train <-  to_categorical(as.integer(train$birdid) -1)
+Y_test <-  to_categorical(as.integer(test$birdid) - 1)
+
+# Build the sequential model
+model = keras_model_sequential()
+model %>%
+  layer_reshape(input_shape=ncol(X_train),target_shape=c(20,20,1)) %>% 
+  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
+  layer_activation("relu") %>%
+  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
+  layer_activation("relu") %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.7) %>% 
+  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
+  layer_activation("relu") %>%
+  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
+  layer_activation("relu") %>%
+  layer_average_pooling_2d(pool_size = c(2,2)) %>% 
+  layer_dropout(0.7) %>% 
+  layer_flatten() %>%
+  layer_dense(64, activation ='relu') %>% 
+  layer_dropout(0.5) %>% 
+  layer_dense(64, activation ='relu') %>% 
+  layer_dropout(0.5) %>%
+  layer_dense(units = ncol(Y_train),  activation='softmax')
+
+# Model compile
+model %>% compile(loss = 'categorical_crossentropy',
+                 optimizer = "adam",
+                 metrics = "categorical_accuracy")
+
+
+# Add a callback to reduce the learning rate when reaching the plateau
+reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
+                                           patience = 50, min_lr = 0.0001)
+
+```
+
+```{r}
+# Start learning
+history = model %>% fit(X_train, Y_train, epochs = 400,
+             validation_data = list(X_test, Y_test),
+              callbacks = reduce_lr, verbose=1)
+```
+
+```{r keras-plot}
+plot(history)
+```
+
+```{r keras-confusion-matrix}
+birdPred <- model %>% predict_classes(X_test)
+t_CNN <- table(birdPred,test$birdid)
+round(sum(diag(t_CNN)) / sum(t_CNN) * 100, 2)
+```
+
+randomForest did better.

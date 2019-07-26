@@ -38,3 +38,5 @@ rsconnect/
 
 # Graphs
 bird_recognition_files/*
+packrat/lib*/
+packrat/src/

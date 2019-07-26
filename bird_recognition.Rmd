@@ -26,8 +26,9 @@ library(tools)
 library(ranger)
 library(randomForest)
 library(stringr)
-library(keras)
+#library(keras)
 library(ggplot2)
+library(caret)
 ```
 
 ## Load the wave files. Separate out the metadata from the filename into columns. 
@@ -135,9 +136,9 @@ testMels_20 <- testMels_20/maxMels
 ```
 
 
-## Using Random-Forest
+## Using Random-Forest from `randomForest` package
 ```{r}
-set.seed(1337) 
+set.seed(138) 
 rf = randomForest(trainMels_20, train$birdid, xtest=testMels_20, ytest=test$birdid, importance = FALSE, proximity = FALSE, replace = TRUE, ntree = 1000, mtry = 20)
 rf
 
@@ -197,79 +198,65 @@ testMels_20_M <- cbind(testMels_20_M,test$birdid)
 
 colnames(trainMels_20_M)[ncol(trainMels_20_M)] <- "birdid"
 colnames(testMels_20_M)[ncol(testMels_20_M)] <- "birdid"
+
+
+trainMels_20 <- cbind(trainMels_20,train$birdid)
+testMels_20 <- cbind(testMels_20,test$birdid)
+colnames(trainMels_20)[ncol(trainMels_20)] <- "birdid"
+colnames(testMels_20)[ncol(testMels_20)] <- "birdid"
 ```
 
-# Train new Random Forest model
+# Train new Random Forest model. Use `ranger` package here because it has better performance with bigger dataset and it is compatible with `caret` for grid-search later
 ```{r}
-set.seed(1337)
-M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 2000, importance = "impurity")
+#set.seed(138)
+M_ranger <- ranger(dependent.variable.name = "birdid", data = trainMels_20_M, mtry = 20, classification = TRUE, num.trees = 2000, importance = "impurity", splitrule = "extratrees", num.random.splits=1)
 plot(M_ranger$variable.importance, pch=19, col="#00000030")
 
+M_ranger
 t_M <- table(predict(M_ranger,testMels_20_M)$predictions, test$birdid)
 t_M
 round(sum(diag(t_M)) / sum(t_M) * 100, 2)
 ```
+
 Adding timestep means doesn't boost the performance.
 
-## Deep learning classification with the R interface to Keras based on MFCC, in particular, a CNN model will be used here.
+# Have to comment on the variable importance plot.
 
-```{r keras, warning=FALSE}
-# Assigning input and output variables
-X_train <-  trainMels_20
-X_test <-  testMels_20
-Y_train <-  to_categorical(as.integer(train$birdid) -1)
-Y_test <-  to_categorical(as.integer(test$birdid) - 1)
-
-# Build the sequential model
-model = keras_model_sequential()
-model %>%
-  layer_reshape(input_shape=ncol(X_train),target_shape=c(20,20,1)) %>% 
-  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
-  layer_activation("relu") %>%
-  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
-  layer_activation("relu") %>%
-  layer_max_pooling_2d(pool_size = c(2,2)) %>%
-  layer_dropout(0.7) %>% 
-  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
-  layer_activation("relu") %>%
-  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
-  layer_activation("relu") %>%
-  layer_average_pooling_2d(pool_size = c(2,2)) %>% 
-  layer_dropout(0.7) %>% 
-  layer_flatten() %>%
-  layer_dense(64, activation ='relu') %>% 
-  layer_dropout(0.5) %>% 
-  layer_dense(64, activation ='relu') %>% 
-  layer_dropout(0.5) %>%
-  layer_dense(units = ncol(Y_train),  activation='softmax')
-
-# Model compile
-model %>% compile(loss = 'categorical_crossentropy',
-                 optimizer = "adam",
-                 metrics = "categorical_accuracy")
-
-
-# Add a callback to reduce the learning rate when reaching the plateau
-reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
-                                           patience = 50, min_lr = 0.0001)
-
-```
+#TODO: Grid Search
 
 ```{r}
-# Start learning
-history = model %>% fit(X_train, Y_train, epochs = 400,
-             validation_data = list(X_test, Y_test),
-              callbacks = reduce_lr, verbose=1)
+set.seed(138)
+
+index <- train %>%
+  add_rownames() %>% 
+  group_by(birdid, calltype) %>% 
+  mutate(rownum=row_number()) %>%
+  group_by(rownum) %>% 
+  select(rowname) %>% 
+  group_split()
+
+index <- list(as.integer(index[[1]]$rowname), as.integer(index[[2]]$rowname))
+
+tgrid <- expand.grid(
+ .mtry = c(15,20),
+ .splitrule = c("extratrees","gini"),
+ .min.node.size = 1
+)
+
+rangerFit1 <- train(factor(birdid)~., data = trainMels_20,
+                 method = "ranger",
+                 trControl = trainControl(index=index),
+                 verbose = FALSE,
+                 classification = TRUE,
+                 num.trees = 2000,
+                 #splitrule = "extratrees",
+                 #metric="Accuracy",
+                 #tuneLength = 1,
+                 tuneGrid= tgrid
+                 #num.trees=2000
+                 )
+rangerFit1
+
 ```
 
-```{r keras-plot}
-plot(history)
-```
 
-```{r keras-confusion-matrix}
-birdPred <- model %>% predict_classes(X_test)
-t_CNN <- table(birdPred,test$birdid)
-round(sum(diag(t_CNN)) / sum(t_CNN) * 100, 2)
-```
-
-randomForest did better.
