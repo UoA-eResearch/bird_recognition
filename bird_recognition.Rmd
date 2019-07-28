@@ -249,14 +249,14 @@ rangerFit1 <- train(factor(birdid)~., data = trainMels_20,
                  verbose = FALSE,
                  classification = TRUE,
                  num.trees = 2000,
-                 #splitrule = "extratrees",
-                 #metric="Accuracy",
-                 #tuneLength = 1,
                  tuneGrid= tgrid
-                 #num.trees=2000
                  )
 rangerFit1
 
 ```
 
-
+```{r}
+t_rangerFit1 <- table(predict(rangerFit1, testMels_20),test$birdid)
+t_rangerFit1
+round(sum(diag(t_rangerFit1)) / sum(t_rangerFit1) * 100, 2)
+```
