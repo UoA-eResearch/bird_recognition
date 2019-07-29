@@ -1,0 +1,163 @@
+---
+title: "Bird Recognition using CNN"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+  html_notebook:
+    toc: yes
+    toc_float: yes
+---
+
+GitHub repo: https://github.com/UoA-eResearch/bird_recognition
+
+## Load the necessary packages
+
+```{r setup, warning=FALSE}
+rm(list=ls(all=TRUE))
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning = FALSE)
+knitr::opts_chunk$set(fig.width = 12, fig.height = 8, fig.align = 'center')
+
+library(bioacoustics)
+library(tuneR)
+library(seewave)
+library(dplyr)
+library(tools)
+#library(ranger)
+#library(randomForest)
+library(stringr)
+library(keras)
+library(ggplot2)
+library(caret)
+```
+
+```{r load}
+files = list.files("wav_files_playback", "*.wav", full.names=TRUE)
+files_without_extension = basename(file_path_sans_ext(files))
+wavs = setNames(
+  lapply(
+    files,
+    read_audio
+  ),
+  files_without_extension
+)
+metadata = data.frame(str_split_fixed(files_without_extension, "_", 3))
+metadata = cbind(metadata, files_without_extension)
+colnames(metadata) = c("birdid", "calltype", "idnumber", "filename")
+```
+
+
+## Split dataset into train / test since the sample size is small, the validation set won't be used for now. The test dataset will contain one row for each combination of birdid / calltype
+
+```{r split, echo=FALSE}
+set.seed(1337)
+test_row <- sample(1:3,1)
+test_row
+test <- metadata %>% 
+          group_by(birdid, calltype) %>% 
+          filter(row_number()==test_row)
+          
+train <-  metadata %>% 
+          group_by(birdid, calltype) %>% 
+          filter(row_number()!=test_row)
+
+
+mels = sapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
+trainMels = mels[train$filename] # Select the MFCCs corresponding to the training dataset
+testMels = mels[test$filename]
+
+```
+
+Since the audio lengths are different and most of them fall under 20 timesteps, the first 20 timesteps would be extracted. In addition, the number of MFCC coefficients is 20 so the data would have a nice (20,20) shape.
+
+```{r}
+timestepTake <- 20
+# Only extract 20 first timesteps
+extract20 <- function(matrixI) {
+  test <- matrix(0,timestepTake,20)
+  dimensionM <- dim(matrixI)
+  timestepM <- min(timestepTake,dimensionM[1])
+  test[1:timestepM, 1:dimensionM[2]] <- matrixI[1:timestepM, 1:dimensionM[2]]
+  test
+}
+
+# Only taking the first 20 timesteps othwerwise zero
+trainMels_20 <- lapply(trainMels, extract20)
+testMels_20 <- lapply(testMels, extract20)
+
+# Flatten the matrices out
+trainMels_20 <- matrix(unlist(trainMels_20), ncol=(20*20), byrow=TRUE)
+testMels_20 <- matrix(unlist(testMels_20), ncol=(20*20), byrow=TRUE)
+
+# Normalise
+maxMels <- do.call(max,mels) # Calculate the max across the whole list of matrices to scale the predictor values between 0-1
+trainMels_20 <- trainMels_20/maxMels
+testMels_20 <- testMels_20/maxMels
+```
+
+## Deep learning classification with the R interface to Keras based on MFCC, in particular, a CNN model will be used here. The architecture is inspired by `Bird Species Identification using CNN by John Martinsson` (http://publications.lib.chalmers.se/records/fulltext/249467/249467.pdf)
+
+```{r keras, warning=FALSE}
+# Assigning input and output variables
+X_train <-  trainMels_20
+X_test <-  testMels_20
+Y_train <-  to_categorical(as.integer(train$birdid) -1)
+Y_test <-  to_categorical(as.integer(test$birdid) - 1)
+
+# Build the sequential model
+model = keras_model_sequential()
+model %>%
+  layer_reshape(input_shape=ncol(X_train),target_shape=c(20,20,1)) %>% 
+  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
+  #layer_batch_normalization() %>%
+  layer_activation_leaky_relu(alpha = 0.5) %>%
+  layer_conv_2d(64, c(3,3), c(1,1), padding='same') %>%
+  #layer_batch_normalization() %>% 
+  layer_activation_leaky_relu() %>%
+  layer_max_pooling_2d(pool_size = c(2,2)) %>%
+  layer_dropout(0.7) %>% 
+  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
+  #layer_batch_normalization() %>% 
+  layer_activation_leaky_relu(alpha = 0.5) %>%
+  layer_conv_2d(128, c(3,3), c(1,1), padding='same') %>%
+  #layer_batch_normalization() %>% 
+  layer_activation_leaky_relu(alpha = 0.5) %>%
+  layer_average_pooling_2d(pool_size = c(2,2)) %>% 
+  layer_dropout(0.7) %>% 
+  layer_flatten() %>%
+  layer_dense(64, activation ='relu') %>% 
+  layer_dropout(0.5) %>% 
+  layer_dense(64, activation ='relu') %>% 
+  layer_dropout(0.5) %>%
+  layer_dense(units = ncol(Y_train),  activation='softmax')
+
+# Model compile
+model %>% compile(loss = 'categorical_crossentropy',
+                 optimizer = "adam",
+                 metrics = "categorical_accuracy")
+
+
+# Add a callback to reduce the learning rate when reaching the plateau
+reduce_lr <- callback_reduce_lr_on_plateau(monitor = 'loss', factor = 0.5,
+                                           patience = 50, min_lr = 0.0001)
+
+```
+
+```{r}
+# Start learning
+history = model %>% fit(X_train, Y_train, epochs = 200,
+             validation_data = list(X_test, Y_test),
+              callbacks = reduce_lr, verbose=1)
+```
+
+```{r keras-plot}
+plot(history)
+```
+
+```{r keras-confusion-matrix}
+birdPred <- model %>% predict_classes(X_test)
+t_CNN <- table(birdPred,test$birdid)
+round(sum(diag(t_CNN)) / sum(t_CNN) * 100, 2)
+```
+
+randomForest did better.

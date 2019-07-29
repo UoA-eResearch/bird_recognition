@@ -75,6 +75,7 @@ train <-  metadata %>%
 ```
 
 ## Visualise the train/test distribution. Here we have three samples for each call type for each individual bird thus we will train our model on two samples, validate it on the last one. In the end, the model will be evaluated on the whole dataset.
+
 ```{r}
 metadata %>%
   group_by(birdid,calltype) %>% 
