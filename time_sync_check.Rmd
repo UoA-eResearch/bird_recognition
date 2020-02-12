@@ -29,6 +29,20 @@ rfid %>%
   geom_freqpoly(binwidth = 60)
 ```
 ### Reference spectrograms for playback files
+```{r}
+html_tag_audio <- function(file, type = c("wav")) {
+  type <- match.arg(type)
+  htmltools::tags$audio(
+    controls = "",
+    htmltools::tags$source(
+      src = file,
+      type = glue::glue("audio/{type}", type = type)
+    )
+  )
+}
+html_tag_audio("clips/PB0023.wav")
+html_tag_audio("clips/PB0024.wav")
+```
 
 ```{r}
 files = Sys.glob("data/2019 RFID/NNK*/NNK30*/PB*.wav")
