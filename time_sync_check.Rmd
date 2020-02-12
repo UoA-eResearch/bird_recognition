@@ -1,0 +1,93 @@
+---
+title: "Time sync check"
+output: html_notebook
+---
+
+## Load libraries
+
+```{r message=FALSE, warning=FALSE}
+library(bioacoustics)
+library(tuneR)
+library(seewave)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(tools)
+library(ggplot2)
+```
+
+## Load RFID log files
+
+```{r}
+files = Sys.glob("data/2019 RFID/NNK*/NNK30*/*/*.TXT")
+csvs = lapply(files, read.csv, header=FALSE, col.names = c("year", "month", "day", "hour","minute_sec", "id", "ext", "int", "msg"))
+rfid = do.call(rbind, csvs)
+rfid$datetime = paste0(rfid$year, "-", rfid$month, "-", rfid$day, " ", rfid$hour, ":", rfid$minute_sec)
+rfid$datetime = ymd_hms(rfid$datetime, tz="Pacific/Auckland")
+rfid %>% 
+  ggplot(aes(datetime)) +
+  geom_freqpoly(binwidth = 60)
+```
+### Reference spectrograms for playback files
+
+```{r}
+files = Sys.glob("data/2019 RFID/NNK*/NNK30*/PB*.wav")
+PB_wavs = lapply(files, function(f) {
+  wav = read_audio(f)
+  wav_length = round(length(wav) / wav@samp.rate, 2)
+  spectro(wav, main=paste0(basename(f), " ", wav_length, "s"), osc=TRUE)
+  data.frame(filename=basename(f), wav_length, stringsAsFactors = FALSE)
+})
+PB_wavs = do.call(rbind, PB_wavs)
+```
+
+### Build a reference dataframe showing which wave files correspond to which times (corrected to RFID times)
+
+```{r}
+files = sort(Sys.glob("data/2019 BAR recordings/NNK*/NNK30/*/*.wav"))
+df = lapply(files, function(f) {
+  bits = strsplit(basename(f), "_")[[1]]
+  offset = -61
+  start = ymd_hms(paste(bits[2], bits[3]), tz="Pacific/Auckland") + offset
+  wav_header = readWave(f, header=TRUE)
+  duration = wav_header$samples / wav_header$sample.rate
+  end = start + duration
+  data.frame(filename = f, base_filename = basename(f), start = start, end = end, interval = interval(start, end), stringsAsFactors = FALSE)
+})
+df = do.call(rbind, df)
+df$interval
+```
+
+
+### Select a few playback entries to check
+
+```{r}
+filtered_rfid = filter(rfid, msg == PB_wavs$filename[1])
+filtered_rfid$match = sapply(filtered_rfid$datetime, function(dt) {
+  indices = which(dt %within% df$interval)
+  if (length(indices) == 0) indices = NA
+  indices
+})
+print(paste("There are", nrow(filtered_rfid), PB_wavs$filename[1], "playbacks, of which", sum(!is.na(filtered_rfid$match)), "have recordings"))
+# A few randomly
+#datetimes_to_check = sort(sample(filtered_rfid$datetime[!is.na(filtered_rfid$match)], 10))
+# Ones from the 13th
+datetimes_to_check = filtered_rfid$datetime[!is.na(filtered_rfid$match) & filtered_rfid$datetime < ymd("2019-12-14")]
+print(datetimes_to_check)
+```
+
+```{r}
+dt = datetimes_to_check[15]
+#dt = ymd_hms("2019-12-13 16:45:04", tz="Pacific/Auckland")
+match = filtered_rfid$match[filtered_rfid$datetime == dt]
+f = df$filename[match]
+clip_start = time_length(dt - df$start[match], unit = "seconds")
+clip_end = clip_start + PB_wavs$wav_length[1]
+print(paste(f, dt, clip_start, clip_end))
+wav = read_audio(f, from = clip_start, to = clip_end + 1)
+spectro(wav, main=dt, osc=TRUE)
+play(wav, "play")
+```
+
+
+
