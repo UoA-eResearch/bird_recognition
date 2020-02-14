@@ -129,6 +129,7 @@ annotations = do.call(rbind, annotations)
 annotations$datetime = ymd_hms(paste(annotations$Begin.Date, annotations$Begin.Clock.Time))
 annotations$offset = rep(NA, nrow(annotations))
 annotations$offset_from_start_of_recording = rep(NA, nrow(annotations))
+annotations$Individual.ID[annotations$Individual.ID == "PB0009" | annotations$Individual.ID == "PB009"] = "PB0009zp"
 for (i in 1:nrow(annotations)) {
   if (substring(annotations$Individual.ID[i], 0, 2) == "PB") {
     filtered_datetimes = rfid$datetime[annotations$Nest.ID[i] == rfid$site & rfid$msg == paste0(annotations$Individual.ID[i], ".wav")]
