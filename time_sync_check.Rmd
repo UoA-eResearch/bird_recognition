@@ -40,23 +40,23 @@ ggplot(rfid, aes(datetime)) +
 ```{r}
 html_tag_audio <- function(file, type = c("wav")) {
   type <- match.arg(type)
-  htmltools::tags$audio(
-    controls = "",
-    htmltools::tags$source(
-      src = file,
-      type = glue::glue("audio/{type}", type = type)
+  htmltools::tags$h3(
+    basename(file),
+    htmltools::tags$audio(
+      controls = "",
+      htmltools::tags$source(
+        src = file,
+        type = glue::glue("audio/{type}", type = type)
+      )
     )
   )
 }
 files = Sys.glob("./clips/PB*.wav")
-setNames(lapply(files, html_tag_audio), files)
-```
-
-```{r}
 PB_wavs = lapply(files, function(f) {
   wav = read_audio(f)
   wav_length = round(length(wav) / wav@samp.rate, 2)
   spectro(wav, main=paste0(basename(f), " ", wav_length, "s"), osc=TRUE)
+  print(html_tag_audio(f))
   data.frame(filename=basename(f), wav_length, stringsAsFactors = FALSE)
 })
 PB_wavs = do.call(rbind, PB_wavs)
@@ -65,21 +65,29 @@ PB_wavs = do.call(rbind, PB_wavs)
 ### Build a reference dataframe showing which wave files correspond to which times
 
 ```{r}
-files = list.files("data/2019 BAR recordings", pattern = "*.wav$", recursive = TRUE, full.names=TRUE)
-library(pbapply)
-df = pblapply(files, function(f) {
-  bits = strsplit(basename(f), "_")[[1]]
-  start = ymd_hms(paste(bits[2], bits[3]))
-  site = strsplit(f, "/")[[1]][4]
-  try({
-    wav_header = readWave(f, header=TRUE)
-    duration = wav_header$samples / wav_header$sample.rate
-    end = start + duration
-    return(data.frame(filename = f, base_filename = basename(f), site = site, start = start, end = end, interval = interval(start, end), stringsAsFactors = FALSE))
+if (file.exists("misc/BAR_timespans.csv")) {
+  df = read.csv("misc/BAR_timespans.csv", stringsAsFactors = FALSE)
+  df$start = ymd_hms(df$start)
+  df$end = ymd_hms(df$end)
+  df$interval = interval(df$start, df$end)
+} else {
+  files = list.files("data/2019 BAR recordings", pattern = "*.wav$", recursive = TRUE, full.names=TRUE)
+  library(pbapply)
+  df = pblapply(files, function(f) {
+    bits = strsplit(basename(f), "_")[[1]]
+    start = ymd_hms(paste(bits[2], bits[3]))
+    site = strsplit(f, "/")[[1]][4]
+    try({
+      wav_header = readWave(f, header=TRUE)
+      duration = wav_header$samples / wav_header$sample.rate
+      end = start + duration
+      return(data.frame(filename = f, base_filename = basename(f), site = site, start = start, end = end, interval = interval(start, end), stringsAsFactors = FALSE))
+    })
+    NULL
   })
-  NULL
-})
-df = do.call(rbind, df)
+  df = do.call(rbind, df)
+  write.csv(df, "misc/BAR_timespans.csv")
+}
 df[c("site", "interval")]
 ```
 
@@ -87,13 +95,14 @@ df[c("site", "interval")]
 ### Select a few playback entries to check
 
 ```{r}
-PB_to_check = "PB0024.wav"
-filtered_rfid = filter(rfid, msg == PB_to_check)
+PB_to_check = "PB0023.wav"
+filtered_rfid = filter(rfid, msg == PB_to_check & site == "NNK30")
+filtered_df = filter(df, site == "NNK30")
 filtered_rfid$corrected_datetime = filtered_rfid$datetime
 filtered_rfid$match = lapply(1:nrow(filtered_rfid), function(i) {
   dt = filtered_rfid$corrected_datetime[i]
   site = filtered_rfid$site[i]
-  indices = which(dt %within% df$interval[df$site == site,])
+  indices = which(dt %within% filtered_df$interval)
   if (length(indices) == 0) indices = NA
   indices
 })
@@ -102,16 +111,17 @@ print(paste("There are", nrow(filtered_rfid), PB_to_check, "playbacks, of which"
 #datetimes_to_check = sort(sample(filtered_rfid$datetime[!is.na(filtered_rfid$match)], 10))
 # Ones from the 13th
 #datetimes_to_check = filtered_rfid$datetime[!is.na(filtered_rfid$match) & filtered_rfid$datetime < ymd("2019-12-14")]
-datetimes_to_check = filtered_rfid$corrected_datetime[!is.na(filtered_rfid$match) & filtered_rfid$corrected_datetime %within% interval(ymd_hms("2019-12-03 06:45:00"), ymd_hms("2019-12-03 07:32:00"))]
+datetimes_to_check = filtered_rfid$corrected_datetime[!is.na(filtered_rfid$match) & filtered_rfid$corrected_datetime %within% interval(ymd_hms("2019-12-13 16:45:00"), ymd_hms("2019-12-13 17:13:00"))]
 print(datetimes_to_check)
 ```
 
 ```{r}
 #dt = ymd_hms("2019-12-13 16:45:04")
+setWavPlayer("play") # OS dependent
 checked_clips = lapply(datetimes_to_check, function(dt) {
-  match = filtered_rfid$match[filtered_rfid$corrected_datetime == dt]
-  f = df$filename[match]
-  clip_start = time_length(dt - df$start[match], unit = "seconds")
+  match = filtered_rfid$match[filtered_rfid$corrected_datetime == dt][[1]]
+  f = filtered_df$filename[match]
+  clip_start = time_length(dt - filtered_df$start[match], unit = "seconds")
   clip_end = clip_start + PB_wavs$wav_length[PB_wavs$filename == PB_to_check]
   print(paste(f, dt, clip_start, clip_end))
   wav = read_audio(f, from = clip_start, to = clip_end + 1)
@@ -153,5 +163,22 @@ ggplot(data = filtered_annotations, aes(x=offset_from_start_of_recording, y=offs
                    parse = TRUE)
 ```
 
+Something is wrong with the RFID chip clock - it's drifting significantly. More data points will help - let's autodetect PB in the audio files
 
+```{r}
+filtered_annotations = annotations[annotations$Individual.ID == "PB0023" & annotations$Nest.ID == "NNK30",]
+print(filtered_annotations[1,])
+library(monitoR)
+PB23 = makeCorTemplate("clips/PB0023.wav", frq.lim = c(3,10), name="PB0023")
+PB24 = makeCorTemplate("clips/PB0024.wav", frq.lim = c(3,10), name="PB0024")
+ctemps = combineCorTemplates(PB23, PB24)
+wav = read_audio(filtered_annotations$Begin.Path[1], from = 300, to = 800)
+savewav(wav, filename="test.wav")
+#spectro(wav, osc=TRUE)
+#play(wav)
+cscores <- corMatch("test.wav", ctemps, parallel = TRUE, show.prog = TRUE)
+cdetects <- findPeaks(cscores)
+getDetections(cdetects)
+```
+monitoR seems too unreliable for this task, unfortunately
 
