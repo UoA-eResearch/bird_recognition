@@ -135,7 +135,6 @@ checked_clips = lapply(datetimes_to_check, function(dt) {
 
 ```{r}
 annotations = lapply(list.files("misc", "*.txt", full.names=TRUE), function(f) {
-  print(f)
   if (str_detect(f, "selections")) {
     x = read.table(f, sep="\t", header=TRUE, stringsAsFactors = FALSE)
     x$datetime = ymd_hms(paste(x$Begin.Date, x$Begin.Clock.Time))
@@ -152,32 +151,30 @@ annotations = lapply(list.files("misc", "*.txt", full.names=TRUE), function(f) {
 })
 annotations = do.call(rbind, annotations)
 annotations$offset = rep(NA, nrow(annotations))
-annotations$time_since_reset = rep(NA, nrow(annotations))
-annotations$offset_from_start_of_recording = rep(NA, nrow(annotations))
+annotations$rfid_offset = rep(NA, nrow(annotations))
+annotations$rfid_datetime = annotations$datetime
 annotations$Individual.ID[annotations$Individual.ID == "PB0009" | annotations$Individual.ID == "PB009"] = "PB0009zp"
 for (i in 1:nrow(annotations)) {
   if (substring(annotations$Individual.ID[i], 0, 2) == "PB") {
     filtered_rfid = filter(rfid, annotations$Nest.ID[i] == site & msg == paste0(annotations$Individual.ID[i], ".wav"))
     matched_rec_start = df$start[df$site == annotations$Nest.ID[i] & annotations$datetime[i] %within% df$interval]
-    if (length(matched_rec_start) == 1) {
-      annotations$offset_from_start_of_recording[i] = time_length(annotations$datetime[i] - matched_rec_start)
-    }
-    annotations$time_since_reset[i] = time_length(annotations$datetime[i] - max(rfid$datetime[annotations$Nest.ID[i] == rfid$site & rfid$datetime < annotations$datetime[i] & str_detect(rfid$msg, "Reset")]))
     diffs = time_length(filtered_rfid$datetime - annotations$datetime[i])
     min_i = which.min(abs(diffs))
     offset = diffs[min_i]
     if (length(offset) == 1) {
       annotations$offset[i] = offset
+      annotations$rfid_offset[i] = time_length(filtered_rfid$datetime[min_i] - matched_rec_start)
+      annotations$rfid_datetime[i] = filtered_rfid$datetime[min_i]
     }
   }
 }
 filtered_annotations = filter(annotations, !is.na(offset) & offset > -60 & Nest.ID == "NNS1")
 ggplot(data = filtered_annotations, aes(x=Begin.Time..s., y=offset, color=filename)) +
     geom_point() +
-    geom_smooth(method = "lm") + 
-    stat_poly_eq(formula = y ~ x,
-                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
-                   parse = TRUE)
+    geom_smooth(method = "lm")# +
+#    stat_poly_eq(formula = y ~ x,
+#                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+#                   parse = TRUE)
 ```
 
 ```{r}
