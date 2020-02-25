@@ -16,6 +16,7 @@ library(tools)
 library(ggplot2)
 library(ggpmisc)
 library(plotly)
+library(stringr)
 ymd_hms = function(dt) {
   lubridate::ymd_hms(dt, tz="Pacific/Auckland")
 }
@@ -89,7 +90,7 @@ if (file.exists("misc/BAR_timespans.csv")) {
     NULL
   })
   df = do.call(rbind, df)
-  write.csv(df, "misc/BAR_timespans.csv")
+  write.csv(df, "misc/BAR_timespans.csv", row.names = FALSE)
 }
 df[c("site", "interval")]
 ```
@@ -203,7 +204,7 @@ monitoR seems too unreliable for this task, unfortunately
 The reason for the drift is SD card write speed. BAR logfiles indicate the true time packed, so if we read the BAR logfiles we can determine the true sampling rate, and correct it. In some cases, it'll be just under 44.1KHz.
 
 ```{r}
-files = list.files("data/2019 BAR recordings", pattern = "logfile.txt$", recursive = TRUE, full.names=TRUE)
+files = list.files("data/2019 BAR recordings", pattern = "logfile.*txt$", recursive = TRUE, full.names=TRUE)
 sites = sapply(strsplit(files, "/"), "[[", 4)
 df$true_length = rep(NA, nrow(df))
 for (site in unique(sites)) {
@@ -215,15 +216,15 @@ for (site in unique(sites)) {
   dt = sort(dt)
   for (i in 1:(length(rec) - 1)) {
     if (str_detect(rec[i], "started") && str_detect(rec[i + 1], "stopped")) {
-      wav_starts = df$start[site == site]
-      diffs = time_length(wav_starts - dt[i])
+      filtered_df = df[df$site == site,]
+      diffs = time_length(filtered_df$start - dt[i])
       min_i = which.min(abs(diffs))
+      min_i = which(df$filename == filtered_df$filename[min_i])
       df$true_length[min_i] = time_length(dt[i+1] - dt[i])
     }
   }
 }
+ggplot(df[df$site != "KAKA Aviary_20191101_20191113_BAR",], aes(x=start, y=true_length - duration, color = site)) + geom_point()
 ```
-
-
 
 
