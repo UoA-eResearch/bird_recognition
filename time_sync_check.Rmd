@@ -224,7 +224,22 @@ for (site in unique(sites)) {
     }
   }
 }
-ggplot(df[df$site != "KAKA Aviary_20191101_20191113_BAR",], aes(x=start, y=true_length - duration, color = site)) + geom_point()
+ggplot(df[df$site != "KAKA Aviary_20191101_20191113_BAR",], aes(x=start, y=true_length - duration, color = site)) +
+  geom_point() + 
+  scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
+```
+```{r}
+library(pbapply)
+library(R.utils)
+filtered_df = df[!is.na(df$true_length),]
+pblapply(1:nrow(filtered_df), function(i) {
+  wav = read_audio(filtered_df$filename[i])
+  true_sr = round(length(wav) / filtered_df$true_length[i])
+  print(paste(filtered_df$filename[i], true_sr))
+  output_filename = str_replace(filtered_df$filename[i], "2019 BAR recordings", "2019 BAR recordings - fixed SR")
+  mkdirs(dirname(output_filename))
+  savewav(wav, true_sr, filename = output_filename)
+})
 ```
 
 
