@@ -19,6 +19,9 @@ library(plotly)
 ymd_hms = function(dt) {
   lubridate::ymd_hms(dt, tz="Pacific/Auckland")
 }
+dmy_hms = function(dt) {
+  lubridate::dmy_hms(dt, tz="Pacific/Auckland")
+}
 ```
 
 ## Load RFID log files
@@ -169,18 +172,13 @@ for (i in 1:nrow(annotations)) {
   }
 }
 filtered_annotations = filter(annotations, !is.na(offset) & offset > -60 & Nest.ID == "NNS1")
-ggplot(data = filtered_annotations, aes(x=Begin.Time..s., y=offset, color=filename)) +
+ggplot(data = filtered_annotations, aes(x=rfid_offset, y=offset, color=filename)) +
     geom_point() +
-    geom_smooth(method = "lm")# +
-#    stat_poly_eq(formula = y ~ x,
-#                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
-#                   parse = TRUE)
+    geom_smooth(method = "lm") +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE)
 ```
-
-```{r}
-rfid$site == "NNS1" & rfid$msg == "PB0023.wav"
-```
-
 
 Something is wrong with the RFID chip clock - it's drifting significantly. More data points will help - let's autodetect PB in the audio files
 
@@ -200,4 +198,32 @@ cdetects <- findPeaks(cscores)
 getDetections(cdetects)
 ```
 monitoR seems too unreliable for this task, unfortunately
+
+
+The reason for the drift is SD card write speed. BAR logfiles indicate the true time packed, so if we read the BAR logfiles we can determine the true sampling rate, and correct it. In some cases, it'll be just under 44.1KHz.
+
+```{r}
+files = list.files("data/2019 BAR recordings", pattern = "logfile.txt$", recursive = TRUE, full.names=TRUE)
+sites = sapply(strsplit(files, "/"), "[[", 4)
+df$true_length = rep(NA, nrow(df))
+for (site in unique(sites)) {
+  files_for_site = files[site == sites]
+  lines = unlist(lapply(files_for_site, readLines))
+  rec = str_subset(lines, "Recording")
+  dt = dmy_hms(str_extract(rec, "^.{19}"))
+  rec = rec[order(dt)]
+  dt = sort(dt)
+  for (i in 1:(length(rec) - 1)) {
+    if (str_detect(rec[i], "started") && str_detect(rec[i + 1], "stopped")) {
+      wav_starts = df$start[site == site]
+      diffs = time_length(wav_starts - dt[i])
+      min_i = which.min(abs(diffs))
+      df$true_length[min_i] = time_length(dt[i+1] - dt[i])
+    }
+  }
+}
+```
+
+
+
 
