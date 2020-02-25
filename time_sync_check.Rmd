@@ -69,13 +69,7 @@ PB_wavs = do.call(rbind, PB_wavs)
 ### Build a reference dataframe showing which wave files correspond to which times
 
 ```{r}
-if (file.exists("misc/BAR_timespans.csv")) {
-  df = read.csv("misc/BAR_timespans.csv", stringsAsFactors = FALSE)
-  df$start = ymd_hms(df$start)
-  df$end = ymd_hms(df$end)
-  df$interval = interval(df$start, df$end)
-} else {
-  files = list.files("data/2019 BAR recordings", pattern = "*.wav$", recursive = TRUE, full.names=TRUE)
+read_BAR_metadata = function(files) {
   library(pbapply)
   df = pblapply(files, function(f) {
     bits = strsplit(basename(f), "_")[[1]]
@@ -85,11 +79,21 @@ if (file.exists("misc/BAR_timespans.csv")) {
       wav_header = readWave(f, header=TRUE)
       duration = wav_header$samples / wav_header$sample.rate
       end = start + duration
-      return(data.frame(filename = f, base_filename = basename(f), site = site, start = start, end = end, interval = interval(start, end), stringsAsFactors = FALSE))
+      return(data.frame(filename = f, base_filename = basename(f), site = site, start = start, end = end, duration=duration, interval = interval(start, end), stringsAsFactors = FALSE))
     })
     NULL
   })
   df = do.call(rbind, df)
+  df
+}
+if (file.exists("misc/BAR_timespans.csv")) {
+  df = read.csv("misc/BAR_timespans.csv", stringsAsFactors = FALSE)
+  df$start = ymd_hms(df$start)
+  df$end = ymd_hms(df$end)
+  df$interval = interval(df$start, df$end)
+} else {
+  files = list.files("data/2019 BAR recordings", pattern = "*.wav$", recursive = TRUE, full.names=TRUE)
+  df = read_BAR_metadata(files)
   write.csv(df, "misc/BAR_timespans.csv", row.names = FALSE)
 }
 df[c("site", "interval")]
@@ -229,17 +233,19 @@ ggplot(df[df$site != "KAKA Aviary_20191101_20191113_BAR",], aes(x=start, y=true_
   scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
 ```
 ```{r}
-library(pbapply)
+library(foreach)
+library(doParallel)
 library(R.utils)
-filtered_df = df[!is.na(df$true_length),]
-pblapply(1:nrow(filtered_df), function(i) {
-  wav = read_audio(filtered_df$filename[i])
-  true_sr = round(length(wav) / filtered_df$true_length[i])
-  print(paste(filtered_df$filename[i], true_sr))
+registerDoParallel(detectCores() - 1)
+filtered_df = df[!is.na(df$true_length) & df$true_length > 100 & df$site %in% unique(rfid$site),]
+foreach(i = 1:nrow(filtered_df), .packages = "tuneR")  %dopar% {
   output_filename = str_replace(filtered_df$filename[i], "2019 BAR recordings", "2019 BAR recordings - fixed SR")
-  mkdirs(dirname(output_filename))
-  savewav(wav, true_sr, filename = output_filename)
-})
+  if (!file.exists(output_filename)) {
+    wav = readWave(filtered_df$filename[i])
+    wav@samp.rate = round(length(wav) / filtered_df$true_length[i])
+    mkdirs(dirname(output_filename))
+    writeWave(wav, filename = output_filename)
+  }
+}
 ```
-
 
