@@ -180,13 +180,11 @@ annotations = lapply(list.files("misc", "*.txt", full.names=TRUE), function(f) {
     x$Nest.ID = strsplit(basename(f), "_")[[1]][1]
     x$datetime = df$start[df$base_filename == str_replace(basename(f), ".txt", ".wav")] + x$Begin.Time..s.
   }
-  x$filename = substr(basename(f), start = 6, stop = 20)
+  x$filename = str_replace(basename(f), ".Band.Limited.Energy.Detector.selections.txt|.txt", "")
   x
 })
 annotations = do.call(rbind, annotations)
 annotations$offset = rep(NA, nrow(annotations))
-annotations$rfid_offset = rep(NA, nrow(annotations))
-annotations$rfid_datetime = annotations$datetime
 annotations$Individual.ID[annotations$Individual.ID == "PB0009" | annotations$Individual.ID == "PB009"] = "PB0009zp"
 for (i in 1:nrow(annotations)) {
   if (substring(annotations$Individual.ID[i], 0, 2) == "PB") {
@@ -197,18 +195,17 @@ for (i in 1:nrow(annotations)) {
     offset = diffs[min_i]
     if (length(offset) == 1) {
       annotations$offset[i] = offset
-      annotations$rfid_offset[i] = time_length(filtered_rfid$datetime[min_i] - matched_rec_start)
-      annotations$rfid_datetime[i] = filtered_rfid$datetime[min_i]
     }
   }
 }
 filtered_annotations = filter(annotations, !is.na(offset) & offset > -60 & Nest.ID == "NNS1")
-ggplot(data = filtered_annotations, aes(x=rfid_offset, y=offset, color=filename)) +
+ggplot(data = filtered_annotations, aes(x=Begin.Time..s., y=offset, color=substr(basename(filename), start = 6, stop = 20))) +
     geom_point() +
     geom_smooth(method = "lm") +
     stat_poly_eq(formula = y ~ x,
                    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
-                   parse = TRUE)
+                   parse = TRUE) +
+    labs(color='file datetime')
 ```
 
 Something is wrong with the RFID chip clock - it's drifting significantly. More data points will help - let's autodetect PB in the audio files
@@ -288,7 +285,7 @@ ggplot(df[df$duration > 100,], aes(x=true_sr)) +
 ```
 ```{r}
 approx_offsets$corrected_offset = sapply(1:nrow(approx_offsets), function(i) {
-  approx_offsets$offset[i] * df$true_sr[approx_offsets$filename[i] == df$filename] / 44100
+  approx_offsets$offset[i] * 44100 / df$true_sr[approx_offsets$filename[i] == df$filename]
 })
 write.csv(approx_offsets, "misc/approx_offsets.csv", row.names = FALSE)
 ```
@@ -307,5 +304,39 @@ for (i in sample(1:nrow(filtered_offsets), 10)) {
   spectro(wav, main=basename(f), osc=TRUE)
   play(wav)
 }
+```
+
+```{r}
+annotations$corrected_begin = sapply(1:nrow(annotations), function(i) {
+  true_sr = df$true_sr[str_detect(df$base_filename, fixed(annotations$filename[i]))]
+  annotations$Begin.Time..s.[i] * 44100 / true_sr
+})
+annotations$offset = NA
+for (i in 1:nrow(annotations)) {
+  if (substring(annotations$Individual.ID[i], 0, 2) == "PB") {
+    filtered_rfid = filter(rfid, annotations$Nest.ID[i] == site & msg == paste0(annotations$Individual.ID[i], ".wav"))
+    matched_rec_start = df$start[str_detect(df$base_filename, fixed(annotations$filename[i]))]
+    rfid_offset = time_length(filtered_rfid$datetime - matched_rec_start)
+    diffs = time_length(annotations$corrected_begin[i] - rfid_offset)
+    min_i = which.min(abs(diffs))
+    offset = diffs[min_i]
+    if (length(offset) == 1) {
+      annotations$offset[i] = offset
+    }
+  }
+}
+filtered_annotations = filter(annotations, Nest.ID == "NNS1" & abs(offset) < 60)
+ggplot(data = filtered_annotations, aes(x=corrected_begin, y=offset, color=substr(basename(filename), start = 6, stop = 20))) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(color='file datetime') #+
+    #stat_poly_eq(formula = y ~ x,
+                   #aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   #parse = TRUE)
+ggplot(data = annotations, aes(x=corrected_begin, y=offset, color=Nest.ID)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
 ```
 
