@@ -330,13 +330,32 @@ ggplot(data = filtered_annotations, aes(x=corrected_begin, y=offset, color=subst
     geom_point() +
     geom_smooth(method = "lm") +
     scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
-    labs(color='file datetime') #+
-    #stat_poly_eq(formula = y ~ x,
-                   #aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
-                   #parse = TRUE)
+    labs(color='file datetime') +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE)
 ggplot(data = annotations, aes(x=corrected_begin, y=offset, color=Nest.ID)) +
     geom_point() +
     geom_smooth(method = "lm") +
     scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
 ```
 
+```{r}
+f = "NNS1_20191203_064040_SunriseToSunset [-39.0986 176.8061]"
+offset = median(annotations$offset[annotations$filename == f], na.rm=TRUE) # offset for this file
+matched_df = df[str_detect(df$base_filename, fixed(f)),]
+matched_event_offsets = time_length(rfid$datetime[rfid$msg == "PB0023.wav" & rfid$datetime %within% matched_df$interval & rfid$site == matched_df$site] - matched_df$start)
+for (begin_time in matched_event_offsets) {
+  sr = matched_df$true_sr
+  clip_start = round((begin_time + offset) * sr)
+  clip_end = round(clip_start + (sr * 2))
+  wav = readWave(matched_df$filename, from = clip_start, to = clip_end, units = "samples")
+  print(paste(matched_df$filename, matched_df$true_sr, clip_start, clip_end))
+  wav = readWave(filename = matched_df$filename, from = clip_start, to = clip_end, units="samples")
+  wav@samp.rate = true_sr_for_f
+  spectro(wav, main=begin_time, osc=TRUE)
+  #play(wav)
+}
+```
+
+Not bad.
