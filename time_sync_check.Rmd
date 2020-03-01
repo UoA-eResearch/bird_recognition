@@ -186,6 +186,7 @@ annotations = lapply(list.files("misc", "*.txt", full.names=TRUE), function(f) {
 annotations = do.call(rbind, annotations)
 annotations$offset = rep(NA, nrow(annotations))
 annotations$Individual.ID[annotations$Individual.ID == "PB0009" | annotations$Individual.ID == "PB009"] = "PB0009zp"
+annotations$Nest.ID[annotations$Nest.ID == "NKN31"] = "NNK31"
 for (i in 1:nrow(annotations)) {
   if (substring(annotations$Individual.ID[i], 0, 2) == "PB") {
     filtered_rfid = filter(rfid, annotations$Nest.ID[i] == site & msg == paste0(annotations$Individual.ID[i], ".wav"))
@@ -279,6 +280,7 @@ The problem with that though, is that sampling rates in wave files are integers 
 
 ```{r}
 df$true_sr = df$samples / df$true_length
+df$true_sr[!is.na(df$true_sr) & df$true_sr > 44000] = 44100
 write.csv(df, "misc/BAR_timespans.csv", row.names = FALSE)
 ggplot(df[df$duration > 100,], aes(x=true_sr)) +
   geom_histogram(binwidth=5)
@@ -333,7 +335,19 @@ ggplot(data = filtered_annotations, aes(x=corrected_begin, y=offset, color=subst
     labs(color='file datetime') +
     stat_poly_eq(formula = y ~ x,
                    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
-                   parse = TRUE)
+                   parse = TRUE) +
+    ggtitle("Drift per file at NNS1")
+
+ggplot(data = filtered_annotations, aes(x=datetime, y=offset)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(color='file datetime') +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE) + 
+    ggtitle("Drift per day at NNS1")
+
 ggplot(data = annotations, aes(x=corrected_begin, y=offset, color=Nest.ID)) +
     geom_point() +
     geom_smooth(method = "lm") +
@@ -359,3 +373,48 @@ for (begin_time in matched_event_offsets) {
 ```
 
 Not bad.
+
+## Let's rename these RFID codes with something a bit more readable. We'll need to maintain a way of converting between.
+
+
+```{r}
+unique_rfids = unique(rfid$msg[str_extract(rfid$msg, "^.{2}") == "RF"])
+#human_readable_rfids = paste0("bird", 1:length(unique_rfids))
+human_readable_rfids = c("alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet", "kilo", "lima", "mike", "november")
+human_readable_rfids = setNames(human_readable_rfids, unique_rfids)
+unique_rfids = setNames(unique_rfids, human_readable_rfids)
+
+processed_rfid = rfid
+mask = str_extract(processed_rfid$msg, "^.{2}") == "RF"
+processed_rfid$msg[mask] = human_readable_rfids[processed_rfid$msg[mask]]
+```
+
+```{r}
+time_threshold = 2
+LG_threshold = 1
+library(pbapply)
+results = pblapply(1:sum(mask), function(i) {
+  dt = processed_rfid$datetime[mask][i]
+  this_site = processed_rfid$site[mask][i]
+  bird = processed_rfid$msg[mask][i]
+  pre_LG = filter(processed_rfid, site == this_site & datetime > dt - time_threshold  & datetime <= dt & msg == "Light Gate Change")
+  post_LG = filter(processed_rfid, site == this_site & datetime < dt + time_threshold  & datetime >= dt & msg == "Light Gate Change")
+  pre_int = sum(pre_LG$int)
+  pre_ext = sum(pre_LG$ext)
+  post_int = sum(post_LG$int)
+  post_ext = sum(post_LG$ext)
+  event_types = c()
+  if (pre_ext - pre_int >= LG_threshold & post_int - post_ext >= LG_threshold) {
+    #print(paste(i, bird, "entry", this_site, dt))
+    event_types = c(event_types, "entry")
+  } else if (pre_int - pre_ext >= LG_threshold & post_ext - post_int >= LG_threshold) {
+    #print(paste(i, bird, "exit", this_site, dt))
+    event_types = c(event_types, "exit")
+  }
+  if (length(event_types) >= 1) {
+    return(data.frame(i = i, bird = bird, event_type = event_types, site = this_site, datetime = dt))
+  }
+})
+results = do.call(rbind, results)
+```
+
