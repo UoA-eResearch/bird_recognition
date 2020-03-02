@@ -387,34 +387,43 @@ unique_rfids = setNames(unique_rfids, human_readable_rfids)
 processed_rfid = rfid
 mask = str_extract(processed_rfid$msg, "^.{2}") == "RF"
 processed_rfid$msg[mask] = human_readable_rfids[processed_rfid$msg[mask]]
+ggplot(processed_rfid[mask,], aes(x = datetime, color = msg)) +
+  geom_freqpoly(binwidth = 60 * 60 * 24) + 
+  ggtitle("RFID detections per day")
 ```
 
 ```{r}
-time_threshold = 2
-LG_threshold = 1
-library(pbapply)
-results = pblapply(1:sum(mask), function(i) {
-  dt = processed_rfid$datetime[mask][i]
-  this_site = processed_rfid$site[mask][i]
-  bird = processed_rfid$msg[mask][i]
-  pre_LG = filter(processed_rfid, site == this_site & datetime > dt - time_threshold  & datetime <= dt & msg == "Light Gate Change")
-  post_LG = filter(processed_rfid, site == this_site & datetime < dt + time_threshold  & datetime >= dt & msg == "Light Gate Change")
-  pre_int = sum(pre_LG$int)
-  pre_ext = sum(pre_LG$ext)
-  post_int = sum(post_LG$int)
-  post_ext = sum(post_LG$ext)
-  event_types = c()
-  if (pre_ext - pre_int >= LG_threshold & post_int - post_ext >= LG_threshold) {
-    #print(paste(i, bird, "entry", this_site, dt))
-    event_types = c(event_types, "entry")
-  } else if (pre_int - pre_ext >= LG_threshold & post_ext - post_int >= LG_threshold) {
-    #print(paste(i, bird, "exit", this_site, dt))
-    event_types = c(event_types, "exit")
-  }
-  if (length(event_types) >= 1) {
-    return(data.frame(i = i, bird = bird, event_type = event_types, site = this_site, datetime = dt))
-  }
-})
-results = do.call(rbind, results)
+if (file.exists("misc/processed_rfid.csv")) {
+  processed_rfid2 = read.csv("misc/processed_rfid.csv")
+  processed_rfid2$datetime = ymd_hms(processed_rfid2$datetime)
+} else {
+  time_threshold = 2
+  LG_threshold = 1
+  library(pbapply)
+  processed_rfid2 = pblapply(1:sum(mask), function(i) {
+    dt = processed_rfid$datetime[mask][i]
+    this_site = processed_rfid$site[mask][i]
+    bird = processed_rfid$msg[mask][i]
+    LG = filter(processed_rfid, site == this_site & abs(datetime - dt) < time_threshold & msg == "Light Gate Change")
+    if (nrow(LG) > 2) {
+      event_type = NULL
+      ext_g = mean(diff(LG$ext))
+      int_g = mean(diff(LG$int))
+      if (ext_g < 0 & int_g > 0) {
+        event_type = "entry"
+      } else if (int_g < 0 & ext_g > 0) {
+        event_type = "exit"
+      }
+      if (length(event_type) == 1) {
+        print(paste(i, bird, event_type, this_site, dt))
+        return(data.frame(i = i, bird = bird, event_type = event_type, ext_g = ext_g, int_g = int_g, site = this_site, datetime = dt))
+      }
+    }
+  })
+  processed_rfid2 = do.call(rbind, processed_rfid)
+  write.csv(processed_rfid2, "misc/processed_rfid.csv", row.names=FALSE)
+}
+ggplot(processed_rfid2, aes(x = datetime, y = bird, color = event_type)) + geom_point()
+ggplot(filter(processed_rfid2, datetime > ymd("2019-12-28") & datetime < ymd("2019-12-29")), aes(x = datetime, y = bird, color = event_type)) + geom_point()
 ```
 
