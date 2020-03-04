@@ -392,6 +392,8 @@ ggplot(processed_rfid[mask,], aes(x = datetime, color = msg)) +
   ggtitle("RFID detections per day")
 ```
 
+## Try detect entry / exit events by looking at light gate changes
+
 ```{r}
 if (file.exists("misc/processed_rfid.csv")) {
   processed_rfid2 = read.csv("misc/processed_rfid.csv")
@@ -426,4 +428,49 @@ if (file.exists("misc/processed_rfid.csv")) {
 ggplot(processed_rfid2, aes(x = datetime, y = bird, color = event_type)) + geom_point()
 ggplot(filter(processed_rfid2, datetime > ymd("2019-12-28") & datetime < ymd("2019-12-29")), aes(x = datetime, y = bird, color = event_type)) + geom_point()
 ```
+Seems a bit too unreliable - the light gates might be too sensitive. Looks like we'll have to just slice around RFID passes.
+
+## Build a dataframe of datetime intervals to slice - intelligently overlapping for same bird id, and removing intervals where there might be confusion (a playback, or another bird)
+
+```{r}
+time_threshold = 5
+events_to_ignore = c("Power-on Reset", "Low-voltage Detect Reset", "Light Gate Change", 
+  "Watchdog(COP) Reset", "Playback Error! Restarting", "Software Reset"
+)
+
+library(pbapply)
+dts_to_slice = pblapply(1:sum(mask), function(i) {
+    dt = processed_rfid$datetime[mask][i]
+    this_site = processed_rfid$site[mask][i]
+    bird = processed_rfid$msg[mask][i]
+    this_id = processed_rfid$id[mask][i]
+    
+    start = dt - time_threshold
+    end = dt + time_threshold
+    nearby_events = filter(processed_rfid, id != this_id & site == this_site & abs(time_length(datetime - dt)) < time_threshold & !(msg %in% events_to_ignore))
+    other_birds = human_readable_rfids[!human_readable_rfids == bird]
+    if (any(other_birds %in% nearby_events$msg)) {
+      print(paste(i, "another bird within threshold"))
+      return(NULL)
+    }
+    if (any(str_extract(nearby_events$msg, "^.{2}") == "PB")) {
+      print(paste(i, "playback within threshold"))
+      return(NULL)
+    }
+    data.frame(i = i, site = this_site, bird = bird, start = start, end = end, interval = interval(start, end))
+})
+dts_to_slice = do.call(rbind, dts_to_slice)
+write.csv(dts_to_slice, "misc/dts_to_slice.csv", row.names = FALSE)
+
+dts_to_slice_deduplicated = dts_to_slice %>% group_by(site, bird) %>% arrange(start) %>% 
+                      mutate(indx = c(0, cumsum(as.numeric(lead(start)) >
+                              cummax(as.numeric(end)))[-n()])) %>%
+                      group_by(site, bird, indx) %>%
+                      summarise(start = min(start), end = max(end)) %>%
+                      select(-indx)
+dts_to_slice_deduplicated$duration = time_length(dts_to_slice_deduplicated$end - dts_to_slice_deduplicated$start)
+write.csv(dts_to_slice_deduplicated, "misc/dts_to_slice_deduplicated.csv", row.names = FALSE)
+ggplot(dts_to_slice_deduplicated, aes(duration)) + geom_histogram(binwidth = 1)
+```
+
 
