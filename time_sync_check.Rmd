@@ -363,7 +363,6 @@ for (begin_time in matched_event_offsets) {
   sr = matched_df$true_sr
   clip_start = round((begin_time + offset) * sr)
   clip_end = round(clip_start + (sr * 2))
-  wav = readWave(matched_df$filename, from = clip_start, to = clip_end, units = "samples")
   print(paste(matched_df$filename, matched_df$true_sr, clip_start, clip_end))
   wav = readWave(filename = matched_df$filename, from = clip_start, to = clip_end, units="samples")
   wav@samp.rate = true_sr_for_f
@@ -473,4 +472,29 @@ write.csv(dts_to_slice_deduplicated, "misc/dts_to_slice_deduplicated.csv", row.n
 ggplot(dts_to_slice_deduplicated, aes(duration)) + geom_histogram(binwidth = 1)
 ```
 
+```{r}
+df$offset = sapply(df$base_filename, function(f) {
+  median(annotations$offset[paste0(annotations$filename, ".wav") == f], na.rm = TRUE)
+})
+for (i in 1:nrow(dts_to_slice_deduplicated)) {
+  start = dts_to_slice_deduplicated$start[i]
+  duration = dts_to_slice_deduplicated$duration[i]
+  bird = dts_to_slice_deduplicated$bird[i]
+  site = dts_to_slice_deduplicated$site[i]
+  matched_df = df[df$site == site & start %within% df$interval & !is.na(df$offset) & !is.na(df$true_sr),]
+  if (nrow(matched_df) == 1) {
+    sr = matched_df$true_sr
+    clip_start_s = time_length(start - matched_df$start) + matched_df$offset
+    clip_start_samples = round(clip_start_s * sr)
+    clip_end_samples = round(clip_start_samples + (sr * duration))
+    print(paste(i, bird, site, start, duration, matched_df$filename, matched_df$true_sr, clip_start_samples, clip_end_samples))
+    wav = readWave(filename = matched_df$filename, from = clip_start_samples, to = clip_end_samples, units="samples")
+    wav@samp.rate = round(sr)
+    formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
+    output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
+    mkdirs(dirname(output_filename))
+    writeWave(wav, filename = output_filename)
+  }
+}
+```
 
