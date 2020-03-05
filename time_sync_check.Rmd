@@ -472,6 +472,9 @@ write.csv(dts_to_slice_deduplicated, "misc/dts_to_slice_deduplicated.csv", row.n
 ggplot(dts_to_slice_deduplicated, aes(duration)) + geom_histogram(binwidth = 1)
 ```
 
+## Put median offset per file in df
+## For each interval around a RFID pass, output a wave clip, corrected for offset and SR
+
 ```{r}
 df$offset = sapply(df$base_filename, function(f) {
   median(annotations$offset[paste0(annotations$filename, ".wav") == f], na.rm = TRUE)
@@ -487,13 +490,55 @@ for (i in 1:nrow(dts_to_slice_deduplicated)) {
     clip_start_s = time_length(start - matched_df$start) + matched_df$offset
     clip_start_samples = round(clip_start_s * sr)
     clip_end_samples = round(clip_start_samples + (sr * duration))
-    print(paste(i, bird, site, start, duration, matched_df$filename, matched_df$true_sr, clip_start_samples, clip_end_samples))
+    #print(paste(i, bird, site, start, duration, matched_df$filename, matched_df$true_sr, clip_start_samples, clip_end_samples))
     wav = readWave(filename = matched_df$filename, from = clip_start_samples, to = clip_end_samples, units="samples")
-    wav@samp.rate = round(sr)
+    wav@samp.rate = sr
+    if (sr != 44100) {
+      wav = resamp(wav, g = 44100, output = "Wave")
+    }
     formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
     output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
     mkdirs(dirname(output_filename))
     writeWave(wav, filename = output_filename)
+  }
+}
+```
+
+## Use monitoR to remove silence in sliced clips
+
+```{r}
+template_wav = readWave("misc/ZOOM0049_NNK6_LNVX_F_FH_sel.01.ch01.181124.094641.12..wav")
+template_wav = resamp(template_wav, g = 44100, output = "Wave")
+template_duration = length(template_wav@left) / template_wav@samp.rate
+savewav(template_wav, filename = "misc/zip_template.wav")
+corTemplate = makeCorTemplate("misc/zip_template.wav", wl = 300)
+
+for (bird in human_readable_rfids) {
+  files_for_bird = Sys.glob(paste0("data/2019 BAR recordings - individual bird clips/", bird, "/*.wav"))
+  clips = c()
+  if (length(files_for_bird) == 0) {
+    next
+  }
+  for (i in 1:length(files_for_bird)) {
+    f = files_for_bird[i]
+    cscores = corMatch(f, corTemplate)
+    cdetects = findPeaks(cscores)
+    detects = getDetections(cdetects)
+    if (i == 1) {
+      plot(cdetects)
+    }
+    if (nrow(detects) > 1) {
+      for (j in 1:nrow(detects)) {
+        start_time = detects$time[j]
+        clip = readWave(f, from = start_time, to = start_time + template_duration, units = "seconds")@left
+        clips = c(clips, clip)
+      }
+    }
+  }
+  if (length(clips) > 10) {
+    wav = Wave(clips, samp.rate = 44100, bit = 16)
+    output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, ".wav")
+    writeWave(wav, output_filename)
   }
 }
 ```
