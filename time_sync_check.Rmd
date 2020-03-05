@@ -511,7 +511,7 @@ template_wav = readWave("misc/ZOOM0049_NNK6_LNVX_F_FH_sel.01.ch01.181124.094641.
 template_wav = resamp(template_wav, g = 44100, output = "Wave")
 template_duration = length(template_wav@left) / template_wav@samp.rate
 savewav(template_wav, filename = "misc/zip_template.wav")
-corTemplate = makeCorTemplate("misc/zip_template.wav", wl = 300)
+corTemplate = makeCorTemplate("misc/zip_template.wav", wl = 300, frq.lim = c(5, 14))
 
 for (bird in human_readable_rfids) {
   files_for_bird = Sys.glob(paste0("data/2019 BAR recordings - individual bird clips/", bird, "/*.wav"))
