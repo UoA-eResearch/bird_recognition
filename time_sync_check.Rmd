@@ -18,6 +18,11 @@ library(ggplot2)
 library(ggpmisc)
 library(plotly)
 library(stringr)
+library(foreach)
+library(doParallel)
+library(R.utils)
+library(readxl)
+library(pbapply)
 ymd_hms = function(dt) {
   lubridate::ymd_hms(dt, tz="Pacific/Auckland")
 }
@@ -169,7 +174,9 @@ if (file.exists("misc/approx_offsets.csv")) {
 
 ```{r}
 annotations = lapply(list.files("misc", "*.txt", full.names=TRUE), function(f) {
-  if (str_detect(f, "selections")) {
+  if (str_detect(f, "ZOOM")) {
+    return(NULL)
+  } else if (str_detect(f, "selections")) {
     x = read.table(f, sep="\t", header=TRUE)
     x$datetime = ymd_hms(paste(x$Begin.Date, x$Begin.Clock.Time))
     x = x[c("Begin.Time..s.", "End.Time..s.", "Individual.ID", "Nest.ID", "datetime")]
@@ -180,7 +187,7 @@ annotations = lapply(list.files("misc", "*.txt", full.names=TRUE), function(f) {
     x$Nest.ID = strsplit(basename(f), "_")[[1]][1]
     x$datetime = df$start[df$base_filename == str_replace(basename(f), ".txt", ".wav")] + x$Begin.Time..s.
   }
-  x$filename = str_replace(basename(f), ".Band.Limited.Energy.Detector.selections.txt|.txt", "")
+  x$filename = paste0(str_replace(basename(f), ".Band.Limited.Energy.Detector.selections.txt|.txt", ""), ".wav")
   x
 })
 annotations = do.call(rbind, annotations)
@@ -199,7 +206,18 @@ for (i in 1:nrow(annotations)) {
     }
   }
 }
-filtered_annotations = filter(annotations, !is.na(offset) & offset > -60 & Nest.ID == "NNS1")
+
+approx_offsets = read_excel("misc/approx_offsets.xlsx")
+names(approx_offsets) = c("filename", "guide_start", NA, NA, "Begin.Time..s.", "Nest.ID", "Individual.ID", "datetime", NA)
+annotations = within(annotations, rm(End.Time..s.))
+approx_offsets$offset = approx_offsets$guide_start - approx_offsets$Begin.Time..s.
+approx_offsets$filename = basename(approx_offsets$filename)
+approx_offsets$Individual.ID = str_replace(approx_offsets$Individual.ID, ".wav", "")
+annotations = rbind(annotations, approx_offsets[names(annotations)])
+
+annotations = na.omit(annotations)
+
+filtered_annotations = filter(annotations, offset > -60 & Nest.ID == "NNS1")
 ggplot(data = filtered_annotations, aes(x=Begin.Time..s., y=offset, color=substr(basename(filename), start = 6, stop = 20))) +
     geom_point() +
     geom_smooth(method = "lm") +
@@ -207,6 +225,19 @@ ggplot(data = filtered_annotations, aes(x=Begin.Time..s., y=offset, color=substr
                    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
                    parse = TRUE) +
     labs(color='file datetime')
+filtered_annotations = filter(annotations, Nest.ID == "NNBB12")
+ggplot(data = filtered_annotations, aes(x=Begin.Time..s., y=offset)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE)
+ggplot(data = annotations, aes(x=Begin.Time..s., y=offset, color=Nest.ID)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE)
 ```
 
 Something is wrong with the RFID chip clock - it's drifting significantly. More data points will help - let's autodetect PB in the audio files
@@ -260,9 +291,6 @@ ggplot(df[df$site != "KAKA Aviary_20191101_20191113_BAR",], aes(x=start, y=true_
 ## Write out waves with corrected sampling rates
 
 ```{r eval=FALSE, include=FALSE}
-library(foreach)
-library(doParallel)
-library(R.utils)
 registerDoParallel(detectCores() - 1)
 filtered_df = df[!is.na(df$true_length) & df$true_length > 100 & df$site %in% unique(rfid$site),]
 foreach(i = 1:nrow(filtered_df), .packages = "tuneR")  %dopar% {
@@ -352,6 +380,17 @@ ggplot(data = annotations, aes(x=corrected_begin, y=offset, color=Nest.ID)) +
     geom_point() +
     geom_smooth(method = "lm") +
     scale_y_continuous(breaks = scales::pretty_breaks(n = 10))
+
+filtered_annotations = filter(annotations, Nest.ID == "NNBB12")
+ggplot(data = filtered_annotations, aes(x=datetime, y=offset)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(color='file datetime') +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE) + 
+    ggtitle("Drift per day at NNBB12")
 ```
 
 ```{r}
@@ -477,9 +516,9 @@ ggplot(dts_to_slice_deduplicated, aes(duration)) + geom_histogram(binwidth = 1)
 
 ```{r}
 df$offset = sapply(df$base_filename, function(f) {
-  median(annotations$offset[paste0(annotations$filename, ".wav") == f], na.rm = TRUE)
+  median(annotations$offset[paste0(annotations$filename) == f], na.rm = TRUE)
 })
-for (i in 1:nrow(dts_to_slice_deduplicated)) {
+pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
   start = dts_to_slice_deduplicated$start[i]
   duration = dts_to_slice_deduplicated$duration[i]
   bird = dts_to_slice_deduplicated$bird[i]
@@ -496,12 +535,13 @@ for (i in 1:nrow(dts_to_slice_deduplicated)) {
     if (sr != 44100) {
       wav = resamp(wav, g = 44100, output = "Wave")
     }
+    wav@left = round(wav@left)
     formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
     output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
     mkdirs(dirname(output_filename))
-    writeWave(wav, filename = output_filename)
+    writeWave(wav, filename = output_filename, extensible = F)
   }
-}
+})
 ```
 
 ## Use monitoR to remove silence in sliced clips
@@ -511,7 +551,7 @@ template_wav = readWave("misc/ZOOM0049_NNK6_LNVX_F_FH_sel.01.ch01.181124.094641.
 template_wav = resamp(template_wav, g = 44100, output = "Wave")
 template_duration = length(template_wav@left) / template_wav@samp.rate
 savewav(template_wav, filename = "misc/zip_template.wav")
-corTemplate = makeCorTemplate("misc/zip_template.wav", wl = 300, frq.lim = c(5, 14))
+corTemplate = makeCorTemplate("misc/zip_template.wav", wl = 300, frq.lim = c(5, 15))
 
 for (bird in human_readable_rfids) {
   files_for_bird = Sys.glob(paste0("data/2019 BAR recordings - individual bird clips/", bird, "/*.wav"))
@@ -538,7 +578,7 @@ for (bird in human_readable_rfids) {
   if (length(clips) > 10) {
     wav = Wave(clips, samp.rate = 44100, bit = 16)
     output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, ".wav")
-    writeWave(wav, output_filename)
+    writeWave(wav, output_filename, extensible = F)
   }
 }
 ```
