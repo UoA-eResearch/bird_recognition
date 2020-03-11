@@ -530,16 +530,18 @@ pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
     clip_start_samples = round(clip_start_s * sr)
     clip_end_samples = round(clip_start_samples + (sr * duration))
     #print(paste(i, bird, site, start, duration, matched_df$filename, matched_df$true_sr, clip_start_samples, clip_end_samples))
-    wav = readWave(filename = matched_df$filename, from = clip_start_samples, to = clip_end_samples, units="samples")
-    wav@samp.rate = sr
-    if (sr != 44100) {
-      wav = resamp(wav, g = 44100, output = "Wave")
-    }
-    wav@left = round(wav@left)
-    formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
-    output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
-    mkdirs(dirname(output_filename))
-    writeWave(wav, filename = output_filename, extensible = F)
+    try({
+      wav = readWave(filename = matched_df$filename, from = clip_start_samples, to = clip_end_samples, units="samples")
+      wav@samp.rate = sr
+      if (sr != 44100) {
+        wav = resamp(wav, g = 44100, output = "Wave")
+      }
+      wav@left = round(wav@left)
+      formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
+      output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
+      mkdirs(dirname(output_filename))
+      writeWave(wav, filename = output_filename, extensible = F)
+    })
   }
 })
 ```
@@ -547,11 +549,18 @@ pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
 ## Use monitoR to remove silence in sliced clips
 
 ```{r}
-template_wav = readWave("misc/ZOOM0049_NNK6_LNVX_F_FH_sel.01.ch01.181124.094641.12..wav")
+files = list.files("data/Sound templates", pattern = "*.txt$", full.names=TRUE)
+f = files[1]
+selection_table = read.table(f, header=TRUE, sep="\t")
+freq_lim = c(selection_table$Low.Freq..Hz., selection_table$High.Freq..Hz.)/1000
+wave_filename = str_replace(f, ".Table.1.selections.txt", ".wav")
+template_id = substr(basename(f), 1, 8)
+template_wav = readWave(wave_filename, from = selection_table$Begin.Time..s., to = selection_table$End.Time..s., units="seconds")
 template_wav = resamp(template_wav, g = 44100, output = "Wave")
-template_duration = length(template_wav@left) / template_wav@samp.rate
-savewav(template_wav, filename = "misc/zip_template.wav")
-corTemplate = makeCorTemplate("misc/zip_template.wav", wl = 300, frq.lim = c(5, 15))
+template_duration = length(template_wav@left) / 44100
+processed_template_wave_filename = paste0("misc/", basename(wave_filename))
+savewav(template_wav, filename = processed_template_wave_filename)
+ctemps = makeCorTemplate(processed_template_wave_filename, wl = 300, frq.lim = freq_lim, name = template_id)
 
 for (bird in human_readable_rfids) {
   files_for_bird = Sys.glob(paste0("data/2019 BAR recordings - individual bird clips/", bird, "/*.wav"))
@@ -561,7 +570,7 @@ for (bird in human_readable_rfids) {
   }
   for (i in 1:length(files_for_bird)) {
     f = files_for_bird[i]
-    cscores = corMatch(f, corTemplate)
+    cscores = corMatch(f, ctemps)
     cdetects = findPeaks(cscores)
     detects = getDetections(cdetects)
     if (i == 1) {
