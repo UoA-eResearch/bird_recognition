@@ -523,6 +523,11 @@ pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
   duration = dts_to_slice_deduplicated$duration[i]
   bird = dts_to_slice_deduplicated$bird[i]
   site = dts_to_slice_deduplicated$site[i]
+  formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
+  output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
+  if (file.exists(output_filename)) {
+    return(NULL)
+  }
   matched_df = df[df$site == site & start %within% df$interval & !is.na(df$offset) & !is.na(df$true_sr),]
   if (nrow(matched_df) == 1) {
     sr = matched_df$true_sr
@@ -537,8 +542,6 @@ pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
         wav = resamp(wav, g = 44100, output = "Wave")
       }
       wav@left = round(wav@left)
-      formatted_date = format(start, "%Y-%m-%d_%H%M%S_NZDT")
-      output_filename = paste0("data/2019 BAR recordings - individual bird clips/", bird, "/", site, "_", formatted_date, ".wav")
       mkdirs(dirname(output_filename))
       writeWave(wav, filename = output_filename, extensible = F)
     })
