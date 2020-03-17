@@ -487,6 +487,8 @@ events_to_ignore = c("Power-on Reset", "Low-voltage Detect Reset", "Light Gate C
 
 if (file.exists("misc/dts_to_slice_deduplicated.csv")) {
   dts_to_slice_deduplicated = read.csv("misc/dts_to_slice_deduplicated.csv")
+  dts_to_slice_deduplicated$start = ymd_hms(dts_to_slice_deduplicated$start)
+  dts_to_slice_deduplicated$end = ymd_hms(dts_to_slice_deduplicated$end)
 } else {
   dts_to_slice = pblapply(1:sum(mask), function(i) {
       dt = processed_rfid$datetime[mask][i]
