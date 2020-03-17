@@ -23,6 +23,7 @@ library(doParallel)
 library(R.utils)
 library(readxl)
 library(pbapply)
+library(monitoR)
 ymd_hms = function(dt) {
   lubridate::ymd_hms(dt, tz="Pacific/Auckland")
 }
@@ -42,6 +43,7 @@ csvs = lapply(files, function(path) {
   csv
 })
 rfid = do.call(rbind, csvs)
+rm(csvs)
 rfid$datetime = paste0(rfid$year, "-", rfid$month, "-", rfid$day, " ", rfid$hour, ":", rfid$minute_sec)
 rfid$datetime = ymd_hms(rfid$datetime)
 ggplot(rfid, aes(datetime)) +
@@ -77,7 +79,6 @@ PB_wavs = do.call(rbind, PB_wavs)
 
 ```{r}
 read_BAR_metadata = function(files) {
-  library(pbapply)
   df = pblapply(files, function(f) {
     bits = strsplit(basename(f), "_")[[1]]
     start = ymd_hms(paste(bits[2], bits[3]))
@@ -142,7 +143,7 @@ checked_clips = lapply(datetimes_to_check, function(dt) {
   print(paste(f, dt, clip_start, clip_end))
   wav = read_audio(f, from = clip_start, to = clip_end)
   spectro(wav, main=dt, osc=TRUE)
-  play(wav)
+  #play(wav)
   wav
 })
 ```
@@ -151,7 +152,7 @@ checked_clips = lapply(datetimes_to_check, function(dt) {
 
 ```{r}
 if (file.exists("misc/approx_offsets.csv")) {
-  approx_offsets = read.csv("misc/approx_offsets.csv")
+  approx_offsets_guide = read.csv("misc/approx_offsets.csv")
 } else {
   filtered_rfid = rfid[str_extract(rfid$msg, "^.{2}") == "PB",]
   approx_offsets = lapply(1:nrow(df), function(i) {
@@ -165,7 +166,7 @@ if (file.exists("misc/approx_offsets.csv")) {
     offsets = time_length(matched_events$datetime - df$start[i])
     data.frame(filename = df$filename[i], offset = offsets, site = matched_events$site, pb = matched_events$msg, datetime = matched_events$datetime)
   })
-  approx_offsets = do.call(rbind, approx_offsets)
+  approx_offsets_guide = do.call(rbind, approx_offsets)
   write.csv(approx_offsets, "misc/approx_offsets.csv", row.names = FALSE)
 }
 ```
@@ -242,10 +243,9 @@ ggplot(data = annotations, aes(x=Begin.Time..s., y=offset, color=Nest.ID)) +
 
 Something is wrong with the RFID chip clock - it's drifting significantly. More data points will help - let's autodetect PB in the audio files
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 filtered_annotations = annotations[annotations$Individual.ID == "PB0023" & annotations$Nest.ID == "NNK30",]
 print(filtered_annotations[1,])
-library(monitoR)
 PB23 = makeCorTemplate("clips/PB0023.wav", frq.lim = c(3,10), name="PB0023")
 PB24 = makeCorTemplate("clips/PB0024.wav", frq.lim = c(3,10), name="PB0024")
 ctemps = combineCorTemplates(PB23, PB24)
@@ -313,7 +313,7 @@ write.csv(df, "misc/BAR_timespans.csv", row.names = FALSE)
 ggplot(df[df$duration > 100,], aes(x=true_sr)) +
   geom_histogram(binwidth=5)
 ```
-```{r}
+```{r eval=FALSE, include=FALSE}
 approx_offsets$corrected_offset = sapply(1:nrow(approx_offsets), function(i) {
   approx_offsets$offset[i] * 44100 / df$true_sr[approx_offsets$filename[i] == df$filename]
 })
@@ -321,7 +321,7 @@ write.csv(approx_offsets, "misc/approx_offsets.csv", row.names = FALSE)
 ```
 
 
-```{r}
+```{r eval=FALSE, include=FALSE}
 filtered_offsets = approx_offsets[approx_offsets$site == "NNS1" & approx_offsets$filename %in% df$filename[!is.na(df$true_sr)],]
 for (i in sample(1:nrow(filtered_offsets), 10)) {
   f = filtered_offsets$filename[i]
@@ -332,7 +332,7 @@ for (i in sample(1:nrow(filtered_offsets), 10)) {
   wav = readWave(filename = f, from = clip_start, to = clip_end, units="samples")
   wav@samp.rate = true_sr_for_f
   spectro(wav, main=basename(f), osc=TRUE)
-  play(wav)
+  #play(wav)
 }
 ```
 
@@ -391,12 +391,22 @@ ggplot(data = filtered_annotations, aes(x=datetime, y=offset)) +
                    aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
                    parse = TRUE) + 
     ggtitle("Drift per day at NNBB12")
+filtered_annotations = filter(annotations, Nest.ID == "NNK34")
+ggplot(data = filtered_annotations, aes(x=datetime, y=offset)) +
+    geom_point() +
+    geom_smooth(method = "lm") +
+    scale_y_continuous(breaks = scales::pretty_breaks(n = 10)) +
+    labs(color='file datetime') +
+    stat_poly_eq(formula = y ~ x,
+                   aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                   parse = TRUE) + 
+    ggtitle("Drift per day at NNK34")
 ```
 
 ```{r}
-f = "NNS1_20191203_064040_SunriseToSunset [-39.0986 176.8061]"
+f = "NNS1_20191203_064040_SunriseToSunset [-39.0986 176.8061].wav"
 offset = median(annotations$offset[annotations$filename == f], na.rm=TRUE) # offset for this file
-matched_df = df[str_detect(df$base_filename, fixed(f)),]
+matched_df = df[df$base_filename == f,]
 matched_event_offsets = time_length(rfid$datetime[rfid$msg == "PB0023.wav" & rfid$datetime %within% matched_df$interval & rfid$site == matched_df$site] - matched_df$start)
 for (begin_time in matched_event_offsets) {
   sr = matched_df$true_sr
@@ -404,7 +414,7 @@ for (begin_time in matched_event_offsets) {
   clip_end = round(clip_start + (sr * 2))
   print(paste(matched_df$filename, matched_df$true_sr, clip_start, clip_end))
   wav = readWave(filename = matched_df$filename, from = clip_start, to = clip_end, units="samples")
-  wav@samp.rate = true_sr_for_f
+  wav@samp.rate = sr
   spectro(wav, main=begin_time, osc=TRUE)
   #play(wav)
 }
@@ -439,7 +449,6 @@ if (file.exists("misc/processed_rfid.csv")) {
 } else {
   time_threshold = 2
   LG_threshold = 1
-  library(pbapply)
   processed_rfid2 = pblapply(1:sum(mask), function(i) {
     dt = processed_rfid$datetime[mask][i]
     this_site = processed_rfid$site[mask][i]
@@ -476,38 +485,41 @@ events_to_ignore = c("Power-on Reset", "Low-voltage Detect Reset", "Light Gate C
   "Watchdog(COP) Reset", "Playback Error! Restarting", "Software Reset"
 )
 
-library(pbapply)
-dts_to_slice = pblapply(1:sum(mask), function(i) {
-    dt = processed_rfid$datetime[mask][i]
-    this_site = processed_rfid$site[mask][i]
-    bird = processed_rfid$msg[mask][i]
-    this_id = processed_rfid$id[mask][i]
-    
-    start = dt - time_threshold
-    end = dt + time_threshold
-    nearby_events = filter(processed_rfid, id != this_id & site == this_site & abs(time_length(datetime - dt)) < time_threshold & !(msg %in% events_to_ignore))
-    other_birds = human_readable_rfids[!human_readable_rfids == bird]
-    if (any(other_birds %in% nearby_events$msg)) {
-      print(paste(i, "another bird within threshold"))
-      return(NULL)
-    }
-    if (any(str_extract(nearby_events$msg, "^.{2}") == "PB")) {
-      print(paste(i, "playback within threshold"))
-      return(NULL)
-    }
-    data.frame(i = i, site = this_site, bird = bird, start = start, end = end, interval = interval(start, end))
-})
-dts_to_slice = do.call(rbind, dts_to_slice)
-write.csv(dts_to_slice, "misc/dts_to_slice.csv", row.names = FALSE)
-
-dts_to_slice_deduplicated = dts_to_slice %>% group_by(site, bird) %>% arrange(start) %>% 
-                      mutate(indx = c(0, cumsum(as.numeric(lead(start)) >
-                              cummax(as.numeric(end)))[-n()])) %>%
-                      group_by(site, bird, indx) %>%
-                      summarise(start = min(start), end = max(end)) %>%
-                      select(-indx)
-dts_to_slice_deduplicated$duration = time_length(dts_to_slice_deduplicated$end - dts_to_slice_deduplicated$start)
-write.csv(dts_to_slice_deduplicated, "misc/dts_to_slice_deduplicated.csv", row.names = FALSE)
+if (file.exists("misc/dts_to_slice_deduplicated.csv")) {
+  dts_to_slice_deduplicated = read.csv("misc/dts_to_slice_deduplicated.csv")
+} else {
+  dts_to_slice = pblapply(1:sum(mask), function(i) {
+      dt = processed_rfid$datetime[mask][i]
+      this_site = processed_rfid$site[mask][i]
+      bird = processed_rfid$msg[mask][i]
+      this_id = processed_rfid$id[mask][i]
+      
+      start = dt - time_threshold
+      end = dt + time_threshold
+      nearby_events = filter(processed_rfid, id != this_id & site == this_site & abs(time_length(datetime - dt)) < time_threshold & !(msg %in% events_to_ignore))
+      other_birds = human_readable_rfids[!human_readable_rfids == bird]
+      if (any(other_birds %in% nearby_events$msg)) {
+        print(paste(i, "another bird within threshold"))
+        return(NULL)
+      }
+      if (any(str_extract(nearby_events$msg, "^.{2}") == "PB")) {
+        print(paste(i, "playback within threshold"))
+        return(NULL)
+      }
+      data.frame(i = i, site = this_site, bird = bird, start = start, end = end, interval = interval(start, end))
+  })
+  dts_to_slice = do.call(rbind, dts_to_slice)
+  write.csv(dts_to_slice, "misc/dts_to_slice.csv", row.names = FALSE)
+  
+  dts_to_slice_deduplicated = dts_to_slice %>% group_by(site, bird) %>% arrange(start) %>% 
+                        mutate(indx = c(0, cumsum(as.numeric(lead(start)) >
+                                cummax(as.numeric(end)))[-n()])) %>%
+                        group_by(site, bird, indx) %>%
+                        summarise(start = min(start), end = max(end)) %>%
+                        select(-indx)
+  dts_to_slice_deduplicated$duration = time_length(dts_to_slice_deduplicated$end - dts_to_slice_deduplicated$start)
+  write.csv(dts_to_slice_deduplicated, "misc/dts_to_slice_deduplicated.csv", row.names = FALSE)
+}
 ggplot(dts_to_slice_deduplicated, aes(duration)) + geom_histogram(binwidth = 1)
 ```
 
@@ -518,7 +530,7 @@ ggplot(dts_to_slice_deduplicated, aes(duration)) + geom_histogram(binwidth = 1)
 df$offset = sapply(df$base_filename, function(f) {
   median(annotations$offset[paste0(annotations$filename) == f], na.rm = TRUE)
 })
-pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
+invisible(pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
   start = dts_to_slice_deduplicated$start[i]
   duration = dts_to_slice_deduplicated$duration[i]
   bird = dts_to_slice_deduplicated$bird[i]
@@ -546,7 +558,7 @@ pblapply(1:nrow(dts_to_slice_deduplicated), function(i) {
       writeWave(wav, filename = output_filename, extensible = F)
     })
   }
-})
+}))
 ```
 
 ## Use monitoR to remove silence in sliced clips
