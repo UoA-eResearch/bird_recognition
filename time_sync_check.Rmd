@@ -579,6 +579,8 @@ processed_template_wave_filename = paste0("misc/", basename(wave_filename))
 savewav(template_wav, filename = processed_template_wave_filename)
 ctemps = makeCorTemplate(processed_template_wave_filename, wl = 300, frq.lim = freq_lim, name = template_id)
 
+buffer = .1
+
 for (bird in human_readable_rfids) {
   files_for_bird = Sys.glob(paste0("data/2019 BAR recordings - individual bird clips/", bird, "/*.wav"))
   clips = c()
@@ -587,7 +589,7 @@ for (bird in human_readable_rfids) {
   }
   for (i in 1:length(files_for_bird)) {
     f = files_for_bird[i]
-    cscores = corMatch(f, ctemps)
+    cscores = corMatch(f, ctemps, quiet=TRUE)
     cdetects = findPeaks(cscores)
     detects = getDetections(cdetects)
     if (i == 1) {
@@ -596,7 +598,7 @@ for (bird in human_readable_rfids) {
     if (nrow(detects) > 1) {
       for (j in 1:nrow(detects)) {
         start_time = detects$time[j]
-        clip = readWave(f, from = start_time, to = start_time + template_duration, units = "seconds")@left
+        clip = readWave(f, from = start_time - buffer, to = start_time + template_duration + buffer, units = "seconds")@left
         clips = c(clips, clip)
       }
     }
