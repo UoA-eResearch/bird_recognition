@@ -1,0 +1,90 @@
+---
+title: "Rifleman recognition"
+output: 
+  html_notebook:
+    toc: TRUE
+    toc_float: TRUE
+---
+
+GitHub repo: https://github.com/UoA-eResearch/bird_recognition
+
+## Load the necessary packages
+
+```{r setup, warning=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+library(bioacoustics)
+library(tuneR)
+library(seewave)
+library(dplyr)
+library(tools)
+library(randomForest)
+library(stringr)
+library(keras)
+library(pbapply)
+library(doParallel)
+library(foreach)
+```
+
+## Load the wave files. Render some spectrograms
+
+```{r load}
+files = list.files("data/2019 BAR recordings - individual bird clips/", "*.wav", full.names=TRUE)
+files_without_extension = basename(file_path_sans_ext(files))
+files = files[files_without_extension != "golf"]
+files_without_extension = files_without_extension[files_without_extension != "golf"]
+wavs = setNames(
+  lapply(
+    files,
+    read_audio
+  ),
+  files_without_extension
+)
+samples = setNames(
+  lapply(
+    files,
+    read_audio,
+    from = 0,
+    to = 4
+  ),
+  files_without_extension
+)
+invisible(suppressWarnings(lapply(names(samples), function(birdid) {
+  spectro(samples[[birdid]], main = birdid, osc = TRUE, flim=c(5,15), wl=300)
+})))
+```
+
+## Calculate Mel-frequency Cepstral Coefficients (MFCC)
+
+```{r melfcc}
+mels = pbsapply(wavs, melfcc, numcep = 20) # Calculate all MFCCs
+head(mels[[1]]) # Result is a matrix of 20 coefficients across nrow time frames
+image(mels[[1]])
+for (birdid in names(mels)) {
+  filename = paste0("data/2019 BAR recordings - individual bird clips MELFCC/", birdid, ".csv")
+  write.csv(mels[[birdid]], filename, row.names = FALSE)
+}
+```
+
+```{r}
+barplot(sapply(mels, nrow), las=2)
+```
+
+The data is quite imbalanced
+
+## Train a random forest classifier
+
+```{r}
+set.seed(1337)
+get_random_balanced_slice = function(size = 1510) {
+  sampled_mels = lapply(mels, function(x) x[sample(1:nrow(x), size = size),])
+  trainM = do.call(rbind, sampled_mels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
+  trainM.labels = rep(factor(names(sampled_mels)), lapply(sampled_mels, function(x) nrow(x))) # Create birdid labels for each MFCC
+  rownames(trainM) = trainM.labels
+  trainM
+}
+trainM = get_random_balanced_slice()
+print(dim(trainM))
+#print(trainM[sample(1:nrow(trainM), 10),])
+rf = randomForest(trainM, factor(rownames(trainM)))
+rf
+```
