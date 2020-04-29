@@ -579,7 +579,7 @@ processed_template_wave_filename = paste0("misc/", basename(wave_filename))
 savewav(template_wav, filename = processed_template_wave_filename)
 ctemps = makeCorTemplate(processed_template_wave_filename, wl = 300, frq.lim = freq_lim, name = template_id)
 
-buffer = .1
+buffer = 0
 
 for (bird in human_readable_rfids) {
   files_for_bird = Sys.glob(paste0("data/2019 BAR recordings - individual bird clips/", bird, "/*.wav"))
