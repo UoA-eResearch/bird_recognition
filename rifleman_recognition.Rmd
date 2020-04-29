@@ -23,6 +23,7 @@ library(keras)
 library(pbapply)
 library(doParallel)
 library(foreach)
+library(caret)
 ```
 
 ## Load the wave files. Render some spectrograms
@@ -75,16 +76,23 @@ The data is quite imbalanced
 
 ```{r}
 set.seed(1337)
-get_random_balanced_slice = function(size = 1510) {
+#sampled_mels = mels[lapply(mels, nrow) > 10000]
+get_random_balanced_slice = function(size = 1000) {
   sampled_mels = lapply(mels, function(x) x[sample(1:nrow(x), size = size),])
   trainM = do.call(rbind, sampled_mels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
   trainM.labels = rep(factor(names(sampled_mels)), lapply(sampled_mels, function(x) nrow(x))) # Create birdid labels for each MFCC
   rownames(trainM) = trainM.labels
   trainM
 }
-trainM = get_random_balanced_slice()
-print(dim(trainM))
-#print(trainM[sample(1:nrow(trainM), 10),])
-rf = randomForest(trainM, factor(rownames(trainM)))
+
+registerDoParallel(cores=40)
+rf = foreach(1:40, .combine=randomForest::combine,
+              .multicombine=TRUE, .packages='randomForest') %dopar% {
+    trainM = get_random_balanced_slice()
+    randomForest(trainM, factor(rownames(trainM)))
+}
 rf
+testM = get_random_balanced_slice()
+predictions = predict(rf, testM, type="response")
+confusionMatrix(predictions, factor(rownames(testM)))
 ```

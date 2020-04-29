@@ -3020,55 +3020,93 @@ for (birdid in names(mels)) {
 <h2>Train a random forest classifier</h2>
 <!-- rnb-text-end -->
 <!-- rnb-chunk-begin -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc2V0LnNlZWQoMTMzNylcbmdldF9yYW5kb21fYmFsYW5jZWRfc2xpY2UgPSBmdW5jdGlvbihzaXplID0gMTUxMCkge1xuICBzYW1wbGVkX21lbHMgPSBsYXBwbHkobWVscywgZnVuY3Rpb24oeCkgeFtzYW1wbGUoMTpucm93KHgpLCBzaXplID0gc2l6ZSksXSlcbiAgdHJhaW5NID0gZG8uY2FsbChyYmluZCwgc2FtcGxlZF9tZWxzKSAjIG1lbGZjYyBnaXZlcyBhIG1hdHJpeCAtIHJiaW5kIHRvIGNhc3QgZnJvbSAzRCB0byAyRCBhY3Jvc3MgdGhlIHdob2xlIHRyYWluaW5nIGRhdGFzZXRcbiAgdHJhaW5NLmxhYmVscyA9IHJlcChmYWN0b3IobmFtZXMoc2FtcGxlZF9tZWxzKSksIGxhcHBseShzYW1wbGVkX21lbHMsIGZ1bmN0aW9uKHgpIG5yb3coeCkpKSAjIENyZWF0ZSBiaXJkaWQgbGFiZWxzIGZvciBlYWNoIE1GQ0NcbiAgcm93bmFtZXModHJhaW5NKSA9IHRyYWluTS5sYWJlbHNcbiAgdHJhaW5NXG59XG50cmFpbk0gPSBnZXRfcmFuZG9tX2JhbGFuY2VkX3NsaWNlKClcbnByaW50KGRpbSh0cmFpbk0pKVxuYGBgIn0= -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuc2V0LnNlZWQoMTMzNylcbiNzYW1wbGVkX21lbHMgPSBtZWxzW2xhcHBseShtZWxzLCBucm93KSA+IDEwMDAwXVxuZ2V0X3JhbmRvbV9iYWxhbmNlZF9zbGljZSA9IGZ1bmN0aW9uKHNpemUgPSAxMDAwKSB7XG4gIHNhbXBsZWRfbWVscyA9IGxhcHBseShtZWxzLCBmdW5jdGlvbih4KSB4W3NhbXBsZSgxOm5yb3coeCksIHNpemUgPSBzaXplKSxdKVxuICB0cmFpbk0gPSBkby5jYWxsKHJiaW5kLCBzYW1wbGVkX21lbHMpICMgbWVsZmNjIGdpdmVzIGEgbWF0cml4IC0gcmJpbmQgdG8gY2FzdCBmcm9tIDNEIHRvIDJEIGFjcm9zcyB0aGUgd2hvbGUgdHJhaW5pbmcgZGF0YXNldFxuICB0cmFpbk0ubGFiZWxzID0gcmVwKGZhY3RvcihuYW1lcyhzYW1wbGVkX21lbHMpKSwgbGFwcGx5KHNhbXBsZWRfbWVscywgZnVuY3Rpb24oeCkgbnJvdyh4KSkpICMgQ3JlYXRlIGJpcmRpZCBsYWJlbHMgZm9yIGVhY2ggTUZDQ1xuICByb3duYW1lcyh0cmFpbk0pID0gdHJhaW5NLmxhYmVsc1xuICB0cmFpbk1cbn1cblxucmVnaXN0ZXJEb1BhcmFsbGVsKGNvcmVzPTQwKVxucmYgPSBmb3JlYWNoKDE6NDAsIC5jb21iaW5lPXJhbmRvbUZvcmVzdDo6Y29tYmluZSxcbiAgICAgICAgICAgICAgLm11bHRpY29tYmluZT1UUlVFLCAucGFja2FnZXM9J3JhbmRvbUZvcmVzdCcpICVkb3BhciUge1xuICAgIHRyYWluTSA9IGdldF9yYW5kb21fYmFsYW5jZWRfc2xpY2UoKVxuICAgIHJhbmRvbUZvcmVzdCh0cmFpbk0sIGZhY3Rvcihyb3duYW1lcyh0cmFpbk0pKSlcbn1cbnJmXG5gYGAifQ== -->
 <pre class="r"><code>set.seed(1337)
-get_random_balanced_slice = function(size = 1510) {
+#sampled_mels = mels[lapply(mels, nrow) &gt; 10000]
+get_random_balanced_slice = function(size = 1000) {
   sampled_mels = lapply(mels, function(x) x[sample(1:nrow(x), size = size),])
   trainM = do.call(rbind, sampled_mels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
   trainM.labels = rep(factor(names(sampled_mels)), lapply(sampled_mels, function(x) nrow(x))) # Create birdid labels for each MFCC
   rownames(trainM) = trainM.labels
   trainM
 }
-trainM = get_random_balanced_slice()
-print(dim(trainM))</code></pre>
-<!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiWzFdIDE5NjMwICAgIDIwXG4ifQ== -->
-<pre><code>[1] 19630    20</code></pre>
-<!-- rnb-output-end -->
-<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxuI3ByaW50KHRyYWluTVtzYW1wbGUoMTpucm93KHRyYWluTSksIDEwKSxdKVxucmYgPSByYW5kb21Gb3Jlc3QodHJhaW5NLCBmYWN0b3Iocm93bmFtZXModHJhaW5NKSkpXG5yZlxuYGBgIn0= -->
-<pre class="r"><code>#print(trainM[sample(1:nrow(trainM), 10),])
-rf = randomForest(trainM, factor(rownames(trainM)))
+
+registerDoParallel(cores=40)
+rf = foreach(1:40, .combine=randomForest::combine,
+              .multicombine=TRUE, .packages='randomForest') %dopar% {
+    trainM = get_random_balanced_slice()
+    randomForest(trainM, factor(rownames(trainM)))
+}
 rf</code></pre>
 <!-- rnb-source-end -->
-<!-- rnb-output-begin eyJkYXRhIjoiXG5DYWxsOlxuIHJhbmRvbUZvcmVzdCh4ID0gdHJhaW5NLCB5ID0gZmFjdG9yKHJvd25hbWVzKHRyYWluTSkpKSBcbiAgICAgICAgICAgICAgIFR5cGUgb2YgcmFuZG9tIGZvcmVzdDogY2xhc3NpZmljYXRpb25cbiAgICAgICAgICAgICAgICAgICAgIE51bWJlciBvZiB0cmVlczogNTAwXG5Oby4gb2YgdmFyaWFibGVzIHRyaWVkIGF0IGVhY2ggc3BsaXQ6IDRcblxuICAgICAgICBPT0IgZXN0aW1hdGUgb2YgIGVycm9yIHJhdGU6IDQ5Ljk0JVxuQ29uZnVzaW9uIG1hdHJpeDpcbiAgICAgICAgIGFscGhhIGJyYXZvIGNoYXJsaWUgZGVsdGEgZWNobyBmb3h0cm90IGhvdGVsIGluZGlhIGp1bGlldCBraWxvIGxpbWEgbWlrZSBub3ZlbWJlciBjbGFzcy5lcnJvclxuYWxwaGEgICAgIDE0NjMgICAgIDMgICAgICAgNyAgICAgMCAgICAyICAgICAgIDAgICAgIDAgICAgIDAgICAgICAzICAgIDEgICAgMyAgIDE2ICAgICAgIDEyICAwLjAzMTEyNTgzXG5icmF2byAgICAgICAzNSAgIDQ5NiAgICAgNDM4ICAgIDEzICAgMjIgICAgICA4NSAgICAzMyAgICA1OSAgICAgNjcgICA3MSAgIDU2ICAgNjggICAgICAgNjcgIDAuNjcxNTIzMThcbmNoYXJsaWUgICAgIDQ5ICAgNDM2ICAgICA1MDcgICAgMTYgICAyNiAgICAgIDg3ICAgIDQ2ICAgIDQ3ICAgICA1MyAgIDU1ICAgMzcgICA3MSAgICAgICA4MCAgMC42NjQyMzg0MVxuZGVsdGEgICAgICAgIDAgICAgIDUgICAgICAgOCAgIDk3MCAgNDI1ICAgICAgIDEgICAgIDQgICAgIDcgICAgIDEyICAgMjEgICAyMyAgIDI2ICAgICAgICA4ICAwLjM1NzYxNTg5XG5lY2hvICAgICAgICAgMSAgICAgOSAgICAgICA0ICAgMzc1IDEwMjIgICAgICAgMCAgICAgNyAgICAxMSAgICAgMTEgICAxMiAgIDEzICAgMzUgICAgICAgMTAgIDAuMzIzMTc4ODFcbmZveHRyb3QgICAgICAxICAgIDEwICAgICAgIDcgICAgIDEgICAgMSAgICAxNDE4ICAgIDI3ICAgIDE4ICAgICAgOCAgIDEzICAgIDYgICAgMCAgICAgICAgMCAgMC4wNjA5MjcxNVxuaG90ZWwgICAgICAgMTEgICAgNDMgICAgICAzOCAgICAyMyAgIDE3ICAgICAgNzggICA2NDkgICA0NzMgICAgIDM1ICAgODcgICAzOSAgICA5ICAgICAgICA4ICAwLjU3MDE5ODY4XG5pbmRpYSAgICAgICAxMSAgICAzNSAgICAgIDQxICAgIDI1ICAgMTcgICAgICA4MiAgIDU4MCAgIDUwOSAgICAgNDggICA5MCAgIDQwICAgMTYgICAgICAgMTYgIDAuNjYyOTEzOTFcbmp1bGlldCAgICAgIDM2ICAgIDgwICAgICAgNjMgICAgMjQgICAzNSAgICAgIDY0ICAgIDUxICAgIDY1ICAgIDM0OCAgMzUzICAyODMgICA1OCAgICAgICA1MCAgMC43Njk1MzY0Mlxua2lsbyAgICAgICAgMjMgICAgNTQgICAgICA0NyAgICAyMyAgIDI4ICAgICAgNTMgICAgNTMgICAgNjggICAgMjcxICA1MTggIDMwOSAgIDI1ICAgICAgIDM4ICAwLjY1Njk1MzY0XG5saW1hICAgICAgICAzNiAgICA2NyAgICAgIDU3ICAgIDI0ICAgMjggICAgICA2NCAgICA1MSAgICA1OCAgICAyMzkgIDM1MiAgNDUwICAgMzEgICAgICAgNTMgIDAuNzAxOTg2NzVcbm1pa2UgICAgICAgIDI5ICAgIDE0ICAgICAgMjUgICAgMTEgICAzOCAgICAgICAwICAgICAwICAgICAwICAgICAxMSAgIDEyICAgMTEgIDc2MSAgICAgIDU5OCAgMC40OTYwMjY0OVxubm92ZW1iZXIgICAgMjYgICAgMjEgICAgICAyMCAgICAgOCAgIDM5ICAgICAgIDAgICAgIDAgICAgIDAgICAgICA5ICAgMTAgICAxNSAgNjQ3ICAgICAgNzE1ICAwLjUyNjQ5MDA3XG4ifQ== -->
+<!-- rnb-output-begin eyJkYXRhIjoiXG5DYWxsOlxuIHJhbmRvbUZvcmVzdCh4ID0gdHJhaW5NLCB5ID0gZmFjdG9yKHJvd25hbWVzKHRyYWluTSkpKSBcbiAgICAgICAgICAgICAgIFR5cGUgb2YgcmFuZG9tIGZvcmVzdDogY2xhc3NpZmljYXRpb25cbiAgICAgICAgICAgICAgICAgICAgIE51bWJlciBvZiB0cmVlczogMjAwMDBcbk5vLiBvZiB2YXJpYWJsZXMgdHJpZWQgYXQgZWFjaCBzcGxpdDogNFxuIn0= -->
 <pre><code>
 Call:
  randomForest(x = trainM, y = factor(rownames(trainM))) 
                Type of random forest: classification
-                     Number of trees: 500
-No. of variables tried at each split: 4
+                     Number of trees: 20000
+No. of variables tried at each split: 4</code></pre>
+<!-- rnb-output-end -->
+<!-- rnb-source-begin eyJkYXRhIjoiYGBgclxudGVzdE0gPSBnZXRfcmFuZG9tX2JhbGFuY2VkX3NsaWNlKClcbnByZWRpY3Rpb25zID0gcHJlZGljdChyZiwgdGVzdE0sIHR5cGU9XCJyZXNwb25zZVwiKVxuY29uZnVzaW9uTWF0cml4KHByZWRpY3Rpb25zLCBmYWN0b3Iocm93bmFtZXModGVzdE0pKSlcbmBgYCJ9 -->
+<pre class="r"><code>testM = get_random_balanced_slice()
+predictions = predict(rf, testM, type=&quot;response&quot;)
+confusionMatrix(predictions, factor(rownames(testM)))</code></pre>
+<!-- rnb-source-end -->
+<!-- rnb-output-begin eyJkYXRhIjoiQ29uZnVzaW9uIE1hdHJpeCBhbmQgU3RhdGlzdGljc1xuXG4gICAgICAgICAgUmVmZXJlbmNlXG5QcmVkaWN0aW9uIGFscGhhIGJyYXZvIGNoYXJsaWUgZGVsdGEgZWNobyBmb3h0cm90IGhvdGVsIGluZGlhIGp1bGlldCBraWxvIGxpbWEgbWlrZSBub3ZlbWJlclxuICBhbHBoYSAgICAgIDk5OCAgICAzMCAgICAgIDM1ICAgICAwICAgIDAgICAgICAgMCAgICAgOSAgICAgNSAgICAgMzEgICAzMSAgIDM0ICAgMTcgICAgICAgMjBcbiAgYnJhdm8gICAgICAgIDAgICAyNjMgICAgIDE3NSAgICAgMCAgICAwICAgICAgIDAgICAgMTcgICAgIDggICAgIDM5ICAgMjQgICAzMCAgICA4ICAgICAgICA2XG4gIGNoYXJsaWUgICAgICAwICAgMzIzICAgICA0MzggICAgIDAgICAgMCAgICAgICAwICAgIDI5ICAgIDM5ICAgICA0MSAgIDM0ICAgMjkgICAgOCAgICAgICAxMVxuICBkZWx0YSAgICAgICAgMCAgICAxNSAgICAgIDE2ICAgODkzICAgNjUgICAgICAgMCAgICAxOCAgICAyMiAgICAgMjAgICAyMyAgIDI4ICAgIDcgICAgICAgIDRcbiAgZWNobyAgICAgICAgIDAgICAgMjIgICAgICAyMSAgICA5NiAgOTI4ICAgICAgIDAgICAgIDkgICAgIDggICAgIDIxICAgMTAgICAyMCAgIDI1ICAgICAgIDIwXG4gIGZveHRyb3QgICAgICAwICAgIDcwICAgICAgNzQgICAgIDAgICAgMCAgICAxMDAwICAgIDYwICAgIDUyICAgICAzOSAgIDUzICAgNTcgICAgMCAgICAgICAgMFxuICBob3RlbCAgICAgICAgMCAgICAyNSAgICAgIDM2ICAgICAwICAgIDAgICAgICAgMCAgIDU1MiAgIDMyOCAgICAgMjkgICAzNSAgIDM1ICAgIDAgICAgICAgIDBcbiAgaW5kaWEgICAgICAgIDAgICAgMTggICAgICAxNyAgICAgMSAgICAwICAgICAgIDAgICAyMTQgICA0MDggICAgIDI4ICAgMjcgICAyMyAgICAwICAgICAgICAwXG4gIGp1bGlldCAgICAgICAwICAgIDM2ICAgICAgMjcgICAgIDAgICAgMCAgICAgICAwICAgIDE4ICAgIDMyICAgIDMwOCAgMTQ4ICAxMjAgICAxMCAgICAgICAgOVxuICBraWxvICAgICAgICAgMCAgICA1MyAgICAgIDMzICAgICAxICAgIDEgICAgICAgMCAgICA0MSAgICA1OCAgICAyMTcgIDQxMiAgMTY5ICAgIDUgICAgICAgIDRcbiAgbGltYSAgICAgICAgIDAgICAgNDEgICAgICAyNSAgICAgMSAgICAwICAgICAgIDAgICAgMjYgICAgMjkgICAgMTQ3ICAxNjEgIDM5OSAgIDE0ICAgICAgICA4XG4gIG1pa2UgICAgICAgICAxICAgIDQxICAgICAgNDIgICAgIDYgICAgNCAgICAgICAwICAgICAzICAgICA0ICAgICAzMyAgIDIxICAgMzEgIDU3OCAgICAgIDMyNlxuICBub3ZlbWJlciAgICAgMSAgICA2MyAgICAgIDYxICAgICAyICAgIDIgICAgICAgMCAgICAgNCAgICAgNyAgICAgNDcgICAyMSAgIDI1ICAzMjggICAgICA1OTJcblxuT3ZlcmFsbCBTdGF0aXN0aWNzXG4gICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICBcbiAgICAgICAgICAgICAgIEFjY3VyYWN5IDogMC41OTc2ICAgICAgICAgIFxuICAgICAgICAgICAgICAgICA5NSUgQ0kgOiAoMC41ODkxLCAwLjYwNjEpXG4gICAgTm8gSW5mb3JtYXRpb24gUmF0ZSA6IDAuMDc2OSAgICAgICAgICBcbiAgICBQLVZhbHVlIFtBY2MgPiBOSVJdIDogPCAyLjJlLTE2ICAgICAgIFxuICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgXG4gICAgICAgICAgICAgICAgICBLYXBwYSA6IDAuNTY0MSAgICAgICAgICBcbiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIFxuIE1jbmVtYXIncyBUZXN0IFAtVmFsdWUgOiBOQSAgICAgICAgICAgICAgXG5cblN0YXRpc3RpY3MgYnkgQ2xhc3M6XG5cbiAgICAgICAgICAgICAgICAgICAgIENsYXNzOiBhbHBoYSBDbGFzczogYnJhdm8gQ2xhc3M6IGNoYXJsaWUgQ2xhc3M6IGRlbHRhIENsYXNzOiBlY2hvIENsYXNzOiBmb3h0cm90IENsYXNzOiBob3RlbFxuU2Vuc2l0aXZpdHkgICAgICAgICAgICAgICAwLjk5ODAwICAgICAgMC4yNjMwMCAgICAgICAgMC40MzgwMCAgICAgIDAuODkzMDAgICAgIDAuOTI4MDAgICAgICAgIDEuMDAwMDAgICAgICAwLjU1MjAwXG5TcGVjaWZpY2l0eSAgICAgICAgICAgICAgIDAuOTgyMzMgICAgICAwLjk3NDQyICAgICAgICAwLjk1NzE3ICAgICAgMC45ODE4MyAgICAgMC45NzkwMCAgICAgICAgMC45NjYyNSAgICAgIDAuOTU5MzNcblBvcyBQcmVkIFZhbHVlICAgICAgICAgICAgMC44MjQ3OSAgICAgIDAuNDYxNDAgICAgICAgIDAuNDYwMDggICAgICAwLjgwMzc4ICAgICAwLjc4NjQ0ICAgICAgICAwLjcxMTc0ICAgICAgMC41MzA3N1xuTmVnIFByZWQgVmFsdWUgICAgICAgICAgICAwLjk5OTgzICAgICAgMC45NDA3MSAgICAgICAgMC45NTMzNSAgICAgIDAuOTkxMDAgICAgIDAuOTkzOTEgICAgICAgIDEuMDAwMDAgICAgICAwLjk2MjU0XG5QcmV2YWxlbmNlICAgICAgICAgICAgICAgIDAuMDc2OTIgICAgICAwLjA3NjkyICAgICAgICAwLjA3NjkyICAgICAgMC4wNzY5MiAgICAgMC4wNzY5MiAgICAgICAgMC4wNzY5MiAgICAgIDAuMDc2OTJcbkRldGVjdGlvbiBSYXRlICAgICAgICAgICAgMC4wNzY3NyAgICAgIDAuMDIwMjMgICAgICAgIDAuMDMzNjkgICAgICAwLjA2ODY5ICAgICAwLjA3MTM4ICAgICAgICAwLjA3NjkyICAgICAgMC4wNDI0NlxuRGV0ZWN0aW9uIFByZXZhbGVuY2UgICAgICAwLjA5MzA4ICAgICAgMC4wNDM4NSAgICAgICAgMC4wNzMyMyAgICAgIDAuMDg1NDYgICAgIDAuMDkwNzcgICAgICAgIDAuMTA4MDggICAgICAwLjA4MDAwXG5CYWxhbmNlZCBBY2N1cmFjeSAgICAgICAgIDAuOTkwMTcgICAgICAwLjYxODcxICAgICAgICAwLjY5NzU4ICAgICAgMC45Mzc0MiAgICAgMC45NTM1MCAgICAgICAgMC45ODMxMyAgICAgIDAuNzU1NjdcbiAgICAgICAgICAgICAgICAgICAgIENsYXNzOiBpbmRpYSBDbGFzczoganVsaWV0IENsYXNzOiBraWxvIENsYXNzOiBsaW1hIENsYXNzOiBtaWtlIENsYXNzOiBub3ZlbWJlclxuU2Vuc2l0aXZpdHkgICAgICAgICAgICAgICAwLjQwODAwICAgICAgIDAuMzA4MDAgICAgIDAuNDEyMDAgICAgIDAuMzk5MDAgICAgIDAuNTc4MDAgICAgICAgICAwLjU5MjAwXG5TcGVjaWZpY2l0eSAgICAgICAgICAgICAgIDAuOTcyNjcgICAgICAgMC45NjY2NyAgICAgMC45NTE1MCAgICAgMC45NjIzMyAgICAgMC45NTczMyAgICAgICAgIDAuOTUzMjVcblBvcyBQcmVkIFZhbHVlICAgICAgICAgICAgMC41NTQzNSAgICAgICAwLjQzNTAzICAgICAwLjQxNDQ5ICAgICAwLjQ2ODg2ICAgICAwLjUzMDI4ICAgICAgICAgMC41MTM0NFxuTmVnIFByZWQgVmFsdWUgICAgICAgICAgICAwLjk1MTczICAgICAgIDAuOTQzNzAgICAgIDAuOTUxMDIgICAgIDAuOTUwNTMgICAgIDAuOTY0NTcgICAgICAgICAwLjk2NTU2XG5QcmV2YWxlbmNlICAgICAgICAgICAgICAgIDAuMDc2OTIgICAgICAgMC4wNzY5MiAgICAgMC4wNzY5MiAgICAgMC4wNzY5MiAgICAgMC4wNzY5MiAgICAgICAgIDAuMDc2OTJcbkRldGVjdGlvbiBSYXRlICAgICAgICAgICAgMC4wMzEzOCAgICAgICAwLjAyMzY5ICAgICAwLjAzMTY5ICAgICAwLjAzMDY5ICAgICAwLjA0NDQ2ICAgICAgICAgMC4wNDU1NFxuRGV0ZWN0aW9uIFByZXZhbGVuY2UgICAgICAwLjA1NjYyICAgICAgIDAuMDU0NDYgICAgIDAuMDc2NDYgICAgIDAuMDY1NDYgICAgIDAuMDgzODUgICAgICAgICAwLjA4ODY5XG5CYWxhbmNlZCBBY2N1cmFjeSAgICAgICAgIDAuNjkwMzMgICAgICAgMC42MzczMyAgICAgMC42ODE3NSAgICAgMC42ODA2NyAgICAgMC43Njc2NyAgICAgICAgIDAuNzcyNjNcbiJ9 -->
+<pre><code>Confusion Matrix and Statistics
 
-        OOB estimate of  error rate: 49.94%
-Confusion matrix:
-         alpha bravo charlie delta echo foxtrot hotel india juliet kilo lima mike november class.error
-alpha     1463     3       7     0    2       0     0     0      3    1    3   16       12  0.03112583
-bravo       35   496     438    13   22      85    33    59     67   71   56   68       67  0.67152318
-charlie     49   436     507    16   26      87    46    47     53   55   37   71       80  0.66423841
-delta        0     5       8   970  425       1     4     7     12   21   23   26        8  0.35761589
-echo         1     9       4   375 1022       0     7    11     11   12   13   35       10  0.32317881
-foxtrot      1    10       7     1    1    1418    27    18      8   13    6    0        0  0.06092715
-hotel       11    43      38    23   17      78   649   473     35   87   39    9        8  0.57019868
-india       11    35      41    25   17      82   580   509     48   90   40   16       16  0.66291391
-juliet      36    80      63    24   35      64    51    65    348  353  283   58       50  0.76953642
-kilo        23    54      47    23   28      53    53    68    271  518  309   25       38  0.65695364
-lima        36    67      57    24   28      64    51    58    239  352  450   31       53  0.70198675
-mike        29    14      25    11   38       0     0     0     11   12   11  761      598  0.49602649
-november    26    21      20     8   39       0     0     0      9   10   15  647      715  0.52649007</code></pre>
+          Reference
+Prediction alpha bravo charlie delta echo foxtrot hotel india juliet kilo lima mike november
+  alpha      998    30      35     0    0       0     9     5     31   31   34   17       20
+  bravo        0   263     175     0    0       0    17     8     39   24   30    8        6
+  charlie      0   323     438     0    0       0    29    39     41   34   29    8       11
+  delta        0    15      16   893   65       0    18    22     20   23   28    7        4
+  echo         0    22      21    96  928       0     9     8     21   10   20   25       20
+  foxtrot      0    70      74     0    0    1000    60    52     39   53   57    0        0
+  hotel        0    25      36     0    0       0   552   328     29   35   35    0        0
+  india        0    18      17     1    0       0   214   408     28   27   23    0        0
+  juliet       0    36      27     0    0       0    18    32    308  148  120   10        9
+  kilo         0    53      33     1    1       0    41    58    217  412  169    5        4
+  lima         0    41      25     1    0       0    26    29    147  161  399   14        8
+  mike         1    41      42     6    4       0     3     4     33   21   31  578      326
+  november     1    63      61     2    2       0     4     7     47   21   25  328      592
+
+Overall Statistics
+                                          
+               Accuracy : 0.5976          
+                 95% CI : (0.5891, 0.6061)
+    No Information Rate : 0.0769          
+    P-Value [Acc &gt; NIR] : &lt; 2.2e-16       
+                                          
+                  Kappa : 0.5641          
+                                          
+ Mcnemar's Test P-Value : NA              
+
+Statistics by Class:
+
+                     Class: alpha Class: bravo Class: charlie Class: delta Class: echo Class: foxtrot Class: hotel
+Sensitivity               0.99800      0.26300        0.43800      0.89300     0.92800        1.00000      0.55200
+Specificity               0.98233      0.97442        0.95717      0.98183     0.97900        0.96625      0.95933
+Pos Pred Value            0.82479      0.46140        0.46008      0.80378     0.78644        0.71174      0.53077
+Neg Pred Value            0.99983      0.94071        0.95335      0.99100     0.99391        1.00000      0.96254
+Prevalence                0.07692      0.07692        0.07692      0.07692     0.07692        0.07692      0.07692
+Detection Rate            0.07677      0.02023        0.03369      0.06869     0.07138        0.07692      0.04246
+Detection Prevalence      0.09308      0.04385        0.07323      0.08546     0.09077        0.10808      0.08000
+Balanced Accuracy         0.99017      0.61871        0.69758      0.93742     0.95350        0.98313      0.75567
+                     Class: india Class: juliet Class: kilo Class: lima Class: mike Class: november
+Sensitivity               0.40800       0.30800     0.41200     0.39900     0.57800         0.59200
+Specificity               0.97267       0.96667     0.95150     0.96233     0.95733         0.95325
+Pos Pred Value            0.55435       0.43503     0.41449     0.46886     0.53028         0.51344
+Neg Pred Value            0.95173       0.94370     0.95102     0.95053     0.96457         0.96556
+Prevalence                0.07692       0.07692     0.07692     0.07692     0.07692         0.07692
+Detection Rate            0.03138       0.02369     0.03169     0.03069     0.04446         0.04554
+Detection Prevalence      0.05662       0.05446     0.07646     0.06546     0.08385         0.08869
+Balanced Accuracy         0.69033       0.63733     0.68175     0.68067     0.76767         0.77263</code></pre>
 <!-- rnb-output-end -->
 <!-- rnb-chunk-end -->
 </div>
 
-<div id="rmd-source-code">LS0tCnRpdGxlOiAiUmlmbGVtYW4gcmVjb2duaXRpb24iCm91dHB1dDogCiAgaHRtbF9ub3RlYm9vazoKICAgIHRvYzogVFJVRQogICAgdG9jX2Zsb2F0OiBUUlVFCi0tLQoKR2l0SHViIHJlcG86IGh0dHBzOi8vZ2l0aHViLmNvbS9Vb0EtZVJlc2VhcmNoL2JpcmRfcmVjb2duaXRpb24KCiMjIExvYWQgdGhlIG5lY2Vzc2FyeSBwYWNrYWdlcwoKYGBge3Igc2V0dXAsIHdhcm5pbmc9RkFMU0V9CmtuaXRyOjpvcHRzX2NodW5rJHNldCh3YXJuaW5nID0gRkFMU0UsIG1lc3NhZ2UgPSBGQUxTRSkKbGlicmFyeShiaW9hY291c3RpY3MpCmxpYnJhcnkodHVuZVIpCmxpYnJhcnkoc2Vld2F2ZSkKbGlicmFyeShkcGx5cikKbGlicmFyeSh0b29scykKbGlicmFyeShyYW5kb21Gb3Jlc3QpCmxpYnJhcnkoc3RyaW5ncikKbGlicmFyeShrZXJhcykKbGlicmFyeShwYmFwcGx5KQpsaWJyYXJ5KGRvUGFyYWxsZWwpCmxpYnJhcnkoZm9yZWFjaCkKYGBgCgojIyBMb2FkIHRoZSB3YXZlIGZpbGVzLiBSZW5kZXIgc29tZSBzcGVjdHJvZ3JhbXMKCmBgYHtyIGxvYWR9CmZpbGVzID0gbGlzdC5maWxlcygiZGF0YS8yMDE5IEJBUiByZWNvcmRpbmdzIC0gaW5kaXZpZHVhbCBiaXJkIGNsaXBzLyIsICIqLndhdiIsIGZ1bGwubmFtZXM9VFJVRSkKZmlsZXNfd2l0aG91dF9leHRlbnNpb24gPSBiYXNlbmFtZShmaWxlX3BhdGhfc2Fuc19leHQoZmlsZXMpKQpmaWxlcyA9IGZpbGVzW2ZpbGVzX3dpdGhvdXRfZXh0ZW5zaW9uICE9ICJnb2xmIl0KZmlsZXNfd2l0aG91dF9leHRlbnNpb24gPSBmaWxlc193aXRob3V0X2V4dGVuc2lvbltmaWxlc193aXRob3V0X2V4dGVuc2lvbiAhPSAiZ29sZiJdCndhdnMgPSBzZXROYW1lcygKICBsYXBwbHkoCiAgICBmaWxlcywKICAgIHJlYWRfYXVkaW8KICApLAogIGZpbGVzX3dpdGhvdXRfZXh0ZW5zaW9uCikKc2FtcGxlcyA9IHNldE5hbWVzKAogIGxhcHBseSgKICAgIGZpbGVzLAogICAgcmVhZF9hdWRpbywKICAgIGZyb20gPSAwLAogICAgdG8gPSA0CiAgKSwKICBmaWxlc193aXRob3V0X2V4dGVuc2lvbgopCmludmlzaWJsZShzdXBwcmVzc1dhcm5pbmdzKGxhcHBseShuYW1lcyhzYW1wbGVzKSwgZnVuY3Rpb24oYmlyZGlkKSB7CiAgc3BlY3RybyhzYW1wbGVzW1tiaXJkaWRdXSwgbWFpbiA9IGJpcmRpZCwgb3NjID0gVFJVRSwgZmxpbT1jKDUsMTUpLCB3bD0zMDApCn0pKSkKYGBgCgojIyBDYWxjdWxhdGUgTWVsLWZyZXF1ZW5jeSBDZXBzdHJhbCBDb2VmZmljaWVudHMgKE1GQ0MpCgpgYGB7ciBtZWxmY2N9Cm1lbHMgPSBwYnNhcHBseSh3YXZzLCBtZWxmY2MsIG51bWNlcCA9IDIwKSAjIENhbGN1bGF0ZSBhbGwgTUZDQ3MKaGVhZChtZWxzW1sxXV0pICMgUmVzdWx0IGlzIGEgbWF0cml4IG9mIDIwIGNvZWZmaWNpZW50cyBhY3Jvc3MgbnJvdyB0aW1lIGZyYW1lcwppbWFnZShtZWxzW1sxXV0pCmZvciAoYmlyZGlkIGluIG5hbWVzKG1lbHMpKSB7CiAgZmlsZW5hbWUgPSBwYXN0ZTAoImRhdGEvMjAxOSBCQVIgcmVjb3JkaW5ncyAtIGluZGl2aWR1YWwgYmlyZCBjbGlwcyBNRUxGQ0MvIiwgYmlyZGlkLCAiLmNzdiIpCiAgd3JpdGUuY3N2KG1lbHNbW2JpcmRpZF1dLCBmaWxlbmFtZSwgcm93Lm5hbWVzID0gRkFMU0UpCn0KYGBgCgpgYGB7cn0KYmFycGxvdChzYXBwbHkobWVscywgbnJvdyksIGxhcz0yKQpgYGAKClRoZSBkYXRhIGlzIHF1aXRlIGltYmFsYW5jZWQKCiMjIFRyYWluIGEgcmFuZG9tIGZvcmVzdCBjbGFzc2lmaWVyCgpgYGB7cn0Kc2V0LnNlZWQoMTMzNykKZ2V0X3JhbmRvbV9iYWxhbmNlZF9zbGljZSA9IGZ1bmN0aW9uKHNpemUgPSAxNTEwKSB7CiAgc2FtcGxlZF9tZWxzID0gbGFwcGx5KG1lbHMsIGZ1bmN0aW9uKHgpIHhbc2FtcGxlKDE6bnJvdyh4KSwgc2l6ZSA9IHNpemUpLF0pCiAgdHJhaW5NID0gZG8uY2FsbChyYmluZCwgc2FtcGxlZF9tZWxzKSAjIG1lbGZjYyBnaXZlcyBhIG1hdHJpeCAtIHJiaW5kIHRvIGNhc3QgZnJvbSAzRCB0byAyRCBhY3Jvc3MgdGhlIHdob2xlIHRyYWluaW5nIGRhdGFzZXQKICB0cmFpbk0ubGFiZWxzID0gcmVwKGZhY3RvcihuYW1lcyhzYW1wbGVkX21lbHMpKSwgbGFwcGx5KHNhbXBsZWRfbWVscywgZnVuY3Rpb24oeCkgbnJvdyh4KSkpICMgQ3JlYXRlIGJpcmRpZCBsYWJlbHMgZm9yIGVhY2ggTUZDQwogIHJvd25hbWVzKHRyYWluTSkgPSB0cmFpbk0ubGFiZWxzCiAgdHJhaW5NCn0KdHJhaW5NID0gZ2V0X3JhbmRvbV9iYWxhbmNlZF9zbGljZSgpCnByaW50KGRpbSh0cmFpbk0pKQojcHJpbnQodHJhaW5NW3NhbXBsZSgxOm5yb3codHJhaW5NKSwgMTApLF0pCnJmID0gcmFuZG9tRm9yZXN0KHRyYWluTSwgZmFjdG9yKHJvd25hbWVzKHRyYWluTSkpKQpyZgpgYGAK</div>
+<div id="rmd-source-code">LS0tCnRpdGxlOiAiUmlmbGVtYW4gcmVjb2duaXRpb24iCm91dHB1dDogCiAgaHRtbF9ub3RlYm9vazoKICAgIHRvYzogVFJVRQogICAgdG9jX2Zsb2F0OiBUUlVFCi0tLQoKR2l0SHViIHJlcG86IGh0dHBzOi8vZ2l0aHViLmNvbS9Vb0EtZVJlc2VhcmNoL2JpcmRfcmVjb2duaXRpb24KCiMjIExvYWQgdGhlIG5lY2Vzc2FyeSBwYWNrYWdlcwoKYGBge3Igc2V0dXAsIHdhcm5pbmc9RkFMU0V9CmtuaXRyOjpvcHRzX2NodW5rJHNldCh3YXJuaW5nID0gRkFMU0UsIG1lc3NhZ2UgPSBGQUxTRSkKbGlicmFyeShiaW9hY291c3RpY3MpCmxpYnJhcnkodHVuZVIpCmxpYnJhcnkoc2Vld2F2ZSkKbGlicmFyeShkcGx5cikKbGlicmFyeSh0b29scykKbGlicmFyeShyYW5kb21Gb3Jlc3QpCmxpYnJhcnkoc3RyaW5ncikKbGlicmFyeShrZXJhcykKbGlicmFyeShwYmFwcGx5KQpsaWJyYXJ5KGRvUGFyYWxsZWwpCmxpYnJhcnkoZm9yZWFjaCkKbGlicmFyeShjYXJldCkKYGBgCgojIyBMb2FkIHRoZSB3YXZlIGZpbGVzLiBSZW5kZXIgc29tZSBzcGVjdHJvZ3JhbXMKCmBgYHtyIGxvYWR9CmZpbGVzID0gbGlzdC5maWxlcygiZGF0YS8yMDE5IEJBUiByZWNvcmRpbmdzIC0gaW5kaXZpZHVhbCBiaXJkIGNsaXBzLyIsICIqLndhdiIsIGZ1bGwubmFtZXM9VFJVRSkKZmlsZXNfd2l0aG91dF9leHRlbnNpb24gPSBiYXNlbmFtZShmaWxlX3BhdGhfc2Fuc19leHQoZmlsZXMpKQpmaWxlcyA9IGZpbGVzW2ZpbGVzX3dpdGhvdXRfZXh0ZW5zaW9uICE9ICJnb2xmIl0KZmlsZXNfd2l0aG91dF9leHRlbnNpb24gPSBmaWxlc193aXRob3V0X2V4dGVuc2lvbltmaWxlc193aXRob3V0X2V4dGVuc2lvbiAhPSAiZ29sZiJdCndhdnMgPSBzZXROYW1lcygKICBsYXBwbHkoCiAgICBmaWxlcywKICAgIHJlYWRfYXVkaW8KICApLAogIGZpbGVzX3dpdGhvdXRfZXh0ZW5zaW9uCikKc2FtcGxlcyA9IHNldE5hbWVzKAogIGxhcHBseSgKICAgIGZpbGVzLAogICAgcmVhZF9hdWRpbywKICAgIGZyb20gPSAwLAogICAgdG8gPSA0CiAgKSwKICBmaWxlc193aXRob3V0X2V4dGVuc2lvbgopCmludmlzaWJsZShzdXBwcmVzc1dhcm5pbmdzKGxhcHBseShuYW1lcyhzYW1wbGVzKSwgZnVuY3Rpb24oYmlyZGlkKSB7CiAgc3BlY3RybyhzYW1wbGVzW1tiaXJkaWRdXSwgbWFpbiA9IGJpcmRpZCwgb3NjID0gVFJVRSwgZmxpbT1jKDUsMTUpLCB3bD0zMDApCn0pKSkKYGBgCgojIyBDYWxjdWxhdGUgTWVsLWZyZXF1ZW5jeSBDZXBzdHJhbCBDb2VmZmljaWVudHMgKE1GQ0MpCgpgYGB7ciBtZWxmY2N9Cm1lbHMgPSBwYnNhcHBseSh3YXZzLCBtZWxmY2MsIG51bWNlcCA9IDIwKSAjIENhbGN1bGF0ZSBhbGwgTUZDQ3MKaGVhZChtZWxzW1sxXV0pICMgUmVzdWx0IGlzIGEgbWF0cml4IG9mIDIwIGNvZWZmaWNpZW50cyBhY3Jvc3MgbnJvdyB0aW1lIGZyYW1lcwppbWFnZShtZWxzW1sxXV0pCmZvciAoYmlyZGlkIGluIG5hbWVzKG1lbHMpKSB7CiAgZmlsZW5hbWUgPSBwYXN0ZTAoImRhdGEvMjAxOSBCQVIgcmVjb3JkaW5ncyAtIGluZGl2aWR1YWwgYmlyZCBjbGlwcyBNRUxGQ0MvIiwgYmlyZGlkLCAiLmNzdiIpCiAgd3JpdGUuY3N2KG1lbHNbW2JpcmRpZF1dLCBmaWxlbmFtZSwgcm93Lm5hbWVzID0gRkFMU0UpCn0KYGBgCgpgYGB7cn0KYmFycGxvdChzYXBwbHkobWVscywgbnJvdyksIGxhcz0yKQpgYGAKClRoZSBkYXRhIGlzIHF1aXRlIGltYmFsYW5jZWQKCiMjIFRyYWluIGEgcmFuZG9tIGZvcmVzdCBjbGFzc2lmaWVyCgpgYGB7cn0Kc2V0LnNlZWQoMTMzNykKI3NhbXBsZWRfbWVscyA9IG1lbHNbbGFwcGx5KG1lbHMsIG5yb3cpID4gMTAwMDBdCmdldF9yYW5kb21fYmFsYW5jZWRfc2xpY2UgPSBmdW5jdGlvbihzaXplID0gMTAwMCkgewogIHNhbXBsZWRfbWVscyA9IGxhcHBseShtZWxzLCBmdW5jdGlvbih4KSB4W3NhbXBsZSgxOm5yb3coeCksIHNpemUgPSBzaXplKSxdKQogIHRyYWluTSA9IGRvLmNhbGwocmJpbmQsIHNhbXBsZWRfbWVscykgIyBtZWxmY2MgZ2l2ZXMgYSBtYXRyaXggLSByYmluZCB0byBjYXN0IGZyb20gM0QgdG8gMkQgYWNyb3NzIHRoZSB3aG9sZSB0cmFpbmluZyBkYXRhc2V0CiAgdHJhaW5NLmxhYmVscyA9IHJlcChmYWN0b3IobmFtZXMoc2FtcGxlZF9tZWxzKSksIGxhcHBseShzYW1wbGVkX21lbHMsIGZ1bmN0aW9uKHgpIG5yb3coeCkpKSAjIENyZWF0ZSBiaXJkaWQgbGFiZWxzIGZvciBlYWNoIE1GQ0MKICByb3duYW1lcyh0cmFpbk0pID0gdHJhaW5NLmxhYmVscwogIHRyYWluTQp9CgpyZWdpc3RlckRvUGFyYWxsZWwoY29yZXM9NDApCnJmID0gZm9yZWFjaCgxOjQwLCAuY29tYmluZT1yYW5kb21Gb3Jlc3Q6OmNvbWJpbmUsCiAgICAgICAgICAgICAgLm11bHRpY29tYmluZT1UUlVFLCAucGFja2FnZXM9J3JhbmRvbUZvcmVzdCcpICVkb3BhciUgewogICAgdHJhaW5NID0gZ2V0X3JhbmRvbV9iYWxhbmNlZF9zbGljZSgpCiAgICByYW5kb21Gb3Jlc3QodHJhaW5NLCBmYWN0b3Iocm93bmFtZXModHJhaW5NKSkpCn0KcmYKdGVzdE0gPSBnZXRfcmFuZG9tX2JhbGFuY2VkX3NsaWNlKCkKcHJlZGljdGlvbnMgPSBwcmVkaWN0KHJmLCB0ZXN0TSwgdHlwZT0icmVzcG9uc2UiKQpjb25mdXNpb25NYXRyaXgocHJlZGljdGlvbnMsIGZhY3Rvcihyb3duYW1lcyh0ZXN0TSkpKQpgYGAK</div>
 
 
 </div>
