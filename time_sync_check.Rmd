@@ -578,6 +578,7 @@ template_duration = length(template_wav@left) / 44100
 processed_template_wave_filename = paste0("misc/", basename(wave_filename))
 savewav(template_wav, filename = processed_template_wave_filename)
 ctemps = makeCorTemplate(processed_template_wave_filename, wl = 300, frq.lim = freq_lim, name = template_id)
+templateCutoff(ctemps) = c(default=.5)
 
 buffer = 0
 

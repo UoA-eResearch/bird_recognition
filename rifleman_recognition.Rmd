@@ -11,7 +11,6 @@ GitHub repo: https://github.com/UoA-eResearch/bird_recognition
 ## Load the necessary packages
 
 ```{r setup}
-knitr::opts_chunk$set(include = FALSE)
 library(bioacoustics)
 library(tuneR)
 library(seewave)
@@ -77,22 +76,18 @@ The data is quite imbalanced
 ```{r}
 set.seed(1337)
 sampled_mels = mels[lapply(mels, nrow) > 1000]
-get_random_balanced_slice = function(size = 1000) {
-  sampled_mels = lapply(sampled_mels, function(x) x[sample(1:nrow(x), size = size),])
+get_balanced_slice = function(offset = 0, size = 500) {
+  sampled_mels = lapply(sampled_mels, function(x) x[offset:(offset+size),])
   trainM = do.call(rbind, sampled_mels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
-  trainM.labels = rep(factor(names(sampled_mels)), lapply(sampled_mels, function(x) nrow(x))) # Create birdid labels for each MFCC
+  trainM.labels = rep(factor(names(sampled_mels)), lapply(sampled_mels, nrow)) # Create birdid labels for each MFCC
   rownames(trainM) = trainM.labels
   trainM
 }
 
-registerDoParallel(cores=40)
-rf = foreach(1:40, .combine=randomForest::combine,
-              .multicombine=TRUE, .packages='randomForest') %dopar% {
-    trainM = get_random_balanced_slice()
-    randomForest(trainM, factor(rownames(trainM)))
-}
+trainM = get_balanced_slice()
+rf = randomForest(trainM, factor(rownames(trainM)))
 rf
-testM = get_random_balanced_slice()
+testM = get_balanced_slice(500)
 predictions = predict(rf, testM, type="response")
 confusionMatrix(predictions, factor(rownames(testM)))
 ```
