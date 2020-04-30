@@ -10,8 +10,8 @@ GitHub repo: https://github.com/UoA-eResearch/bird_recognition
 
 ## Load the necessary packages
 
-```{r setup, warning=FALSE}
-knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```{r setup}
+knitr::opts_chunk$set(include = FALSE)
 library(bioacoustics)
 library(tuneR)
 library(seewave)
@@ -76,9 +76,9 @@ The data is quite imbalanced
 
 ```{r}
 set.seed(1337)
-#sampled_mels = mels[lapply(mels, nrow) > 10000]
+sampled_mels = mels[lapply(mels, nrow) > 1000]
 get_random_balanced_slice = function(size = 1000) {
-  sampled_mels = lapply(mels, function(x) x[sample(1:nrow(x), size = size),])
+  sampled_mels = lapply(sampled_mels, function(x) x[sample(1:nrow(x), size = size),])
   trainM = do.call(rbind, sampled_mels) # melfcc gives a matrix - rbind to cast from 3D to 2D across the whole training dataset
   trainM.labels = rep(factor(names(sampled_mels)), lapply(sampled_mels, function(x) nrow(x))) # Create birdid labels for each MFCC
   rownames(trainM) = trainM.labels
